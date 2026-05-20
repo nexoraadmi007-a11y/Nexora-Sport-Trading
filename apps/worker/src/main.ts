@@ -130,12 +130,12 @@ async function runSignalBatch() {
       continue;
     }
 
-    if (await persistence.hasDuplicateSignal(signal)) {
+    if (!process.argv.includes('--resend') && await persistence.hasDuplicateSignal(signal)) {
       console.log(`SKIP duplicate persisted signal | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market}`);
       continue;
     }
 
-    const signalId = await persistence.saveApprovedSignal(signal);
+    const signalId = process.argv.includes('--resend') ? undefined : await persistence.saveApprovedSignal(signal);
     try {
       await telegram.sendSignal(signal);
       console.log(`TELEGRAM_SENT ${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market}`);

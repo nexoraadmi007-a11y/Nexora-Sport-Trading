@@ -19,6 +19,7 @@
     "test": "npm run test --workspaces --if-present",
     "api:dev": "npm run dev -w apps/api",
     "worker:dev": "npm run dev -w apps/worker",
+    "worker:resend": "npm run resend -w apps/worker",
     "worker:scheduler": "npm run scheduler -w apps/worker",
     "worker:start": "npm run start -w apps/worker",
     "worker:dry-run": "npm run dry-run -w apps/worker",
