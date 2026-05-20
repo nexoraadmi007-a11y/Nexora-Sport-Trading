@@ -326,10 +326,23 @@ function toFixture(event: OddsApiEvent): FixtureRef {
     id: event.id,
     sport,
     league: event.sport_title,
+    country: countryFromSportKey(event.sport_key),
     homeTeam: event.home_team,
     awayTeam: event.away_team,
     startsAt: new Date(event.commence_time)
   };
+}
+
+function countryFromSportKey(sportKey: string): string | undefined {
+  const countries: Record<string, string> = {
+    basketball_nba: 'USA',
+    soccer_epl: 'England',
+    soccer_spain_la_liga: 'Spain',
+    soccer_italy_serie_a: 'Italy',
+    soccer_germany_bundesliga: 'Germany',
+    soccer_france_ligue_one: 'France'
+  };
+  return countries[sportKey];
 }
 
 function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
