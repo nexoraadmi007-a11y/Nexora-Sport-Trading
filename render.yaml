@@ -1,0 +1,89 @@
+services:
+  - type: worker
+    name: nexora-elite-signals-worker
+    runtime: docker
+    repo: https://github.com/nexoraadmi007-a11y/Nexora-Sport-Trading.git
+    branch: main
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./infrastructure/docker/Dockerfile.worker
+    dockerContext: .
+    autoDeploy: true
+    maxShutdownDelaySeconds: 30
+    disk:
+      name: nexora-cache
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXORA_CACHE_DIR
+        value: /var/data/nexora-cache
+      - key: MAX_DAILY_SIGNALS
+        value: "5"
+      - key: MAX_ELITE_SIGNALS_PER_BATCH
+        value: "2"
+      - key: SCAN_TIMES_WAT
+        value: "09:30,13:30,17:30"
+      - key: API_DAILY_CALL_LIMIT
+        value: "250"
+      - key: API_HOURLY_CALL_LIMIT
+        value: "35"
+      - key: ODDS_API_DAILY_CALL_LIMIT
+        value: "205"
+      - key: ODDS_API_HOURLY_CALL_LIMIT
+        value: "28"
+      - key: SPORTSDATAIO_DAILY_CALL_LIMIT
+        value: "45"
+      - key: SPORTSDATAIO_HOURLY_CALL_LIMIT
+        value: "6"
+      - key: ODDS_TTL_0_6H_MINUTES
+        value: "30"
+      - key: ODDS_TTL_6_12H_HOURS
+        value: "2"
+      - key: ODDS_TTL_12H_PLUS_HOURS
+        value: "4"
+      - key: SPORTSDATAIO_PLAYER_STATS_TTL_HOURS
+        value: "18"
+      - key: ADDITIONAL_MARKET_WINDOW_HOURS
+        value: "36"
+      - key: NBA_H1_EVENT_LIMIT
+        value: "2"
+      - key: NBA_PLAYER_PROPS_EVENT_LIMIT
+        value: "1"
+      - key: BTTS_EVENT_LIMIT
+        value: "6"
+      - key: ODDS_ADDITIONAL_MARKET_REGIONS
+        value: "uk"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: TELEGRAM_CHANNEL_ID
+        sync: false
+      - key: TELEGRAM_WEBHOOK_URL
+        sync: false
+      - key: ODDS_API_KEY
+        sync: false
+      - key: SPORTSDATAIO_NBA_API_KEY
+        sync: false
+      - key: GOOGLE_SHEETS_WEBHOOK_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PROJECT_REF
+        sync: false
+      - key: SUPABASE_DB_HOST
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: POSTGRESQL_DATABASE_URL
+        sync: false
+      - key: SUPABASE_POOLER_DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
