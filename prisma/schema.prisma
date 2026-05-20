@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Fixture {
+  id          String   @id
+  sport       String
+  league      String
+  country     String?
+  homeTeam    String
+  awayTeam    String
+  kickoffTime DateTime
+  status      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  odds        Odds[]
+  signals     Signal[]
+}
+
+model Odds {
+  id        String   @id @default(cuid())
+  fixtureId String
+  market    String
+  selection String
+  bookmaker String
+  price     Float
+  source    String
+  capturedAt DateTime @default(now())
+  fixture   Fixture @relation(fields: [fixtureId], references: [id])
+}
+
+model OddsHistory {
+  id        String   @id @default(cuid())
+  fixtureId String
+  market    String
+  selection String
+  bookmaker String
+  openPrice Float?
+  signalPrice Float?
+  closePrice Float?
+  capturedAt DateTime @default(now())
+}
+
+model Signal {
+  id          String   @id @default(cuid())
+  fixtureId   String?
+  sport       String
+  engine      String
+  market      String
+  selection   String
+  odds        Float
+  trueProbability Float
+  ev          Float
+  confidence  Float
+  tier        String
+  reason      String
+  status      String
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  fixture     Fixture? @relation(fields: [fixtureId], references: [id])
+  bet         Bet?
+  qualityScore SignalQualityScore?
+  clvTracking ClvTracking?
+}
+
+model Bet {
+  id        String   @id @default(cuid())
+  signalId  String   @unique
+  stakePct  Float
+  result    String?
+  profitLoss Float?
+  createdAt DateTime @default(now())
+  signal    Signal @relation(fields: [signalId], references: [id])
+}
+
+model Result {
+  id        String   @id @default(cuid())
+  fixtureId String
+  homeScore Int?
+  awayScore Int?
+  status    String
+  settledAt DateTime?
+}
+
+model PlayerStat {
+  id        String   @id @default(cuid())
+  playerId  String
+  playerName String
+  team      String
+  statType  String
+  value     Float
+  gameDate  DateTime
+}
+
+model TeamProfile {
+  id        String   @id @default(cuid())
+  sport     String
+  team      String
+  profile   Json
+  updatedAt DateTime @updatedAt
+}
+
+model MatchupProfile {
+  id        String   @id @default(cuid())
+  fixtureId String
+  profile   Json
+  updatedAt DateTime @updatedAt
+}
+
+model SignalQualityScore {
+  id        String   @id @default(cuid())
+  signalId  String   @unique
+  score     Float
+  factors   Json
+  signal    Signal @relation(fields: [signalId], references: [id])
+}
+
+model ClvTracking {
+  id          String   @id @default(cuid())
+  signalId    String   @unique
+  openingOdds Float?
+  signalOdds  Float
+  closingOdds Float?
+  clvPct      Float?
+  signal      Signal @relation(fields: [signalId], references: [id])
+}
+
+model BankrollHistory {
+  id        String   @id @default(cuid())
+  balance   Float
+  change    Float
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+model TelegramLog {
+  id        String   @id @default(cuid())
+  signalId  String?
+  chatId    String
+  message   String
+  status    String
+  error     String?
+  sentAt    DateTime @default(now())
+}
+
+model ApiLog {
+  id        String   @id @default(cuid())
+  provider  String
+  endpoint  String
+  status    String
+  latencyMs Int?
+  error     String?
+  createdAt DateTime @default(now())
+}

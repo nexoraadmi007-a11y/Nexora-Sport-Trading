@@ -1,0 +1,10 @@
+.env
+node_modules/
+dist/
+.turbo/
+.cache/
+.nexora-cache/
+coverage/
+*.log
+__pycache__/
+.pytest_cache/

@@ -1,0 +1,32 @@
+{
+  "name": "@nexora/worker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "node dist/main.js",
+    "dev": "ts-node src/main.ts --once",
+    "scheduler": "ts-node src/main.ts",
+    "dry-run": "ts-node src/main.ts --dry-run",
+    "no-send": "ts-node src/main.ts --no-send",
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@nexora/data-engine": "0.1.0",
+    "@nexora/football-btts-engine": "0.1.0",
+    "@nexora/football-doublechance-engine": "0.1.0",
+    "@nexora/football-over15-engine": "0.1.0",
+    "@nexora/nba-firsthalf-engine": "0.1.0",
+    "@nexora/nba-playerprops-engine": "0.1.0",
+    "@nexora/nba-teamtotals-engine": "0.1.0",
+    "@nexora/persistence-engine": "0.1.0",
+    "@nexora/risk-engine": "0.1.0",
+    "@nexora/shared": "0.1.0",
+    "@nexora/signal-engine": "0.1.0",
+    "@nexora/telegram-engine": "0.1.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2"
+  }
+}

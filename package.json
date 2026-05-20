@@ -1,0 +1,42 @@
+{
+  "name": "nexora-elite-signals",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NEXORA Elite Signals Telegram quant signal infrastructure",
+  "workspaces": [
+    "apps/*",
+    "engines/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build:packages && npm run build:engines && npm run build:services && npm run build:apps",
+    "build:packages": "npm run build -w @nexora/types && npm run build -w @nexora/shared && npm run build -w @nexora/utils",
+    "build:engines": "npm run build -w @nexora/football-over15-engine && npm run build -w @nexora/football-btts-engine && npm run build -w @nexora/football-doublechance-engine && npm run build -w @nexora/nba-playerprops-engine && npm run build -w @nexora/nba-teamtotals-engine && npm run build -w @nexora/nba-firsthalf-engine",
+    "build:services": "npm run build -w @nexora/data-engine && npm run build -w @nexora/market-engine && npm run build -w @nexora/signal-engine && npm run build -w @nexora/telegram-engine && npm run build -w @nexora/clv-engine && npm run build -w @nexora/risk-engine && npm run build -w @nexora/analytics-engine && npm run build -w @nexora/persistence-engine",
+    "build:apps": "npm run build -w @nexora/api && npm run build -w @nexora/worker",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "api:dev": "npm run dev -w apps/api",
+    "worker:dev": "npm run dev -w apps/worker",
+    "worker:scheduler": "npm run scheduler -w apps/worker",
+    "worker:start": "npm run start -w apps/worker",
+    "worker:dry-run": "npm run dry-run -w apps/worker",
+    "worker:no-send": "npm run no-send -w apps/worker",
+    "analytics:check": "python analytics/health_check.py",
+    "config:audit": "node scripts/config-audit.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "prisma": "^5.12.0",
+    "typescript": "^5.4.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  }
+}
