@@ -2,15 +2,16 @@ import type { EngineContext, FixtureRef, MarketPrice, PlayerStatRef } from '@nex
 import { CacheManager, type CacheStats } from './cache-manager';
 import { QuotaGuard, type QuotaSnapshot } from './quota-guard';
 
-const FOOTBALL_SPORT_KEYS = [
+const DEFAULT_FOOTBALL_SPORT_KEYS = [
   'soccer_epl',
   'soccer_spain_la_liga',
   'soccer_italy_serie_a',
   'soccer_germany_bundesliga',
-  'soccer_france_ligue_one'
+  'soccer_france_ligue_one',
+  'soccer_saudi_arabia_pro_league'
 ];
 
-const NBA_SPORT_KEYS = ['basketball_nba'];
+const DEFAULT_NBA_SPORT_KEYS = ['basketball_nba'];
 
 interface OddsApiEvent {
   id: string;
@@ -48,7 +49,7 @@ export class DataEngine {
   async loadContext(): Promise<EngineContext> {
     this.additionalMarketCounts.clear();
     this.additionalMarketSeen.clear();
-    const eventsBySport = await Promise.all([...FOOTBALL_SPORT_KEYS, ...NBA_SPORT_KEYS].map((sportKey) => this.fetchOdds(sportKey)));
+    const eventsBySport = await Promise.all([...footballSportKeys(), ...nbaSportKeys()].map((sportKey) => this.fetchOdds(sportKey)));
     const events = (await Promise.all(eventsBySport.flat().map((event) => this.enrichAdditionalMarkets(event)))).flat();
     const playerStats = await this.fetchRecentNbaPlayerStats();
     this.diagnostics = {
@@ -340,9 +341,30 @@ function countryFromSportKey(sportKey: string): string | undefined {
     soccer_spain_la_liga: 'Spain',
     soccer_italy_serie_a: 'Italy',
     soccer_germany_bundesliga: 'Germany',
-    soccer_france_ligue_one: 'France'
+    soccer_france_ligue_one: 'France',
+    soccer_saudi_arabia_pro_league: 'Saudi Arabia'
   };
   return countries[sportKey];
+}
+
+function footballSportKeys(): string[] {
+  return configuredSportKeys('FOOTBALL_SPORT_KEYS', DEFAULT_FOOTBALL_SPORT_KEYS);
+}
+
+function nbaSportKeys(): string[] {
+  return configuredSportKeys('NBA_SPORT_KEYS', DEFAULT_NBA_SPORT_KEYS);
+}
+
+function configuredSportKeys(envName: string, fallback: string[]): string[] {
+  const configured = process.env[envName];
+  if (!configured) return fallback;
+
+  const keys = configured
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean);
+
+  return keys.length > 0 ? keys : fallback;
 }
 
 function toMarketPrices(event: OddsApiEvent): MarketPrice[] {

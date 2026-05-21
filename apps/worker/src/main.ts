@@ -40,6 +40,8 @@ async function runSignalBatch() {
   const approved = riskEngine.removeCorrelatedExposure(signalEngine.approve(candidates));
 
   if (process.argv.includes('--dry-run')) {
+    const footballFixtures = context.fixtures.filter((fixture) => fixture.sport === 'football');
+    const nbaFixtures = context.fixtures.filter((fixture) => fixture.sport === 'nba');
     const over15Prices = context.prices.filter((price) => price.market === 'Over 1.5');
     const bttsPrices = context.prices.filter((price) => price.market === 'BTTS Yes');
     const h2hPrices = context.prices.filter((price) => price.market === 'Double Chance Candidate');
@@ -53,6 +55,8 @@ async function runSignalBatch() {
     );
     const playerPropPrices = context.prices.filter((price) => price.market.startsWith('player_'));
     console.log(`NEXORA dry run: fixtures=${context.fixtures.length}, prices=${context.prices.length}`);
+    console.log(`Football fixtures: ${footballFixtures.length} (${formatLeagueCounts(footballFixtures)})`);
+    console.log(`NBA fixtures: ${nbaFixtures.length}`);
     console.log(`Over 1.5 prices: ${over15Prices.length}`);
     if (over15Prices.length > 0) {
       const odds = over15Prices.map((price) => price.odds).sort((a, b) => a - b);
@@ -127,13 +131,16 @@ async function runSignalBatch() {
 
   let sentCount = 0;
   let eliteSent = 0;
+  const batchLimit = Number(process.env.MAX_SIGNALS_PER_BATCH || 2);
 
   for (const signal of deliverySignals) {
+    if (sentCount >= batchLimit) break;
     if (signal.tier === 'A+' && eliteSent >= eliteLimit) continue;
-    if (signal.tier !== 'A+' && sentCount > 0) continue;
 
     if (process.argv.includes('--no-send')) {
       console.log(`NO-SEND ${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market} @ ${signal.odds} | persistence skipped`);
+      sentCount += 1;
+      if (signal.tier === 'A+') eliteSent += 1;
       continue;
     }
 
@@ -166,7 +173,6 @@ async function runSignalBatch() {
 
     sentCount += 1;
     if (signal.tier === 'A+') eliteSent += 1;
-    if (signal.tier !== 'A+' || eliteSent >= eliteLimit) break;
   }
 
   if (sentCount === 0 && !process.argv.includes('--no-send')) {
@@ -257,6 +263,19 @@ function watParts(date: Date): { date: string; time: string } {
     date: `${get('year')}-${get('month')}-${get('day')}`,
     time: `${get('hour')}:${get('minute')}`
   };
+}
+
+function formatLeagueCounts(fixtures: Array<{ league: string; country?: string }>): string {
+  const counts = new Map<string, number>();
+  for (const fixture of fixtures) {
+    const label = fixture.country ? `${fixture.league} (${fixture.country})` : fixture.league;
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([league, count]) => `${league}: ${count}`)
+    .join(', ') || 'none';
 }
 
 function dueScheduleSlot(currentTime: string, scanTimes: string[], graceMinutes: number): string | undefined {
