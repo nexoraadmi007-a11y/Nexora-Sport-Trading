@@ -103,10 +103,11 @@ async function runSignalBatch() {
   }
 
   const eliteLimit = Number(process.env.MAX_ELITE_SIGNALS_PER_BATCH || 2);
-  const eliteSignals = approved.filter((item) => item.tier === 'A+').slice(0, eliteLimit);
+  const eliteSignals = approved.filter((item) => item.tier === 'A+');
+  const strongSignals = approved.filter((item) => item.tier === 'A');
   const deliverySignals = eliteSignals.length > 0
-    ? eliteSignals
-    : approved.filter((item) => item.tier === 'A').slice(0, 1);
+    ? [...eliteSignals, ...strongSignals]
+    : strongSignals;
 
   if (deliverySignals.length === 0) {
     if (process.argv.includes('--no-send')) {
@@ -124,7 +125,13 @@ async function runSignalBatch() {
     return;
   }
 
+  let sentCount = 0;
+  let eliteSent = 0;
+
   for (const signal of deliverySignals) {
+    if (signal.tier === 'A+' && eliteSent >= eliteLimit) continue;
+    if (signal.tier !== 'A+' && sentCount > 0) continue;
+
     if (process.argv.includes('--no-send')) {
       console.log(`NO-SEND ${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market} @ ${signal.odds} | persistence skipped`);
       continue;
@@ -156,6 +163,20 @@ async function runSignalBatch() {
       });
       throw error;
     }
+
+    sentCount += 1;
+    if (signal.tier === 'A+') eliteSent += 1;
+    if (signal.tier !== 'A+' || eliteSent >= eliteLimit) break;
+  }
+
+  if (sentCount === 0 && !process.argv.includes('--no-send')) {
+    await telegram.sendNoBet();
+    await persistence.logTelegram({
+      chatId: process.env.TELEGRAM_CHAT_ID || '',
+      message: 'NO ELITE SIGNALS TODAY',
+      status: 'sent'
+    });
+    console.log('TELEGRAM_SENT NO ELITE SIGNALS TODAY');
   }
 
   await persistence.disconnect();
