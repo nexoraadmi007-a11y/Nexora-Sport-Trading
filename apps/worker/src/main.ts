@@ -192,22 +192,28 @@ function startScheduler(): void {
     .split(',')
     .map((time) => time.trim())
     .filter(Boolean);
+  const scheduleGraceMinutes = Number(process.env.SCHEDULE_GRACE_MINUTES || 20);
   let active = false;
   let lastRunKey = '';
 
-  console.log(`NEXORA scheduler active: ${scanTimes.join(', ')} WAT`);
+  console.log(`NEXORA scheduler active: ${scanTimes.join(', ')} WAT (grace ${scheduleGraceMinutes}m)`);
 
   const tick = async () => {
     const now = watParts(new Date());
-    const slot = scanTimes.find((time) => time === now.time);
+    const slot = dueScheduleSlot(now.time, scanTimes, scheduleGraceMinutes);
     if (!slot) return;
 
     const runKey = `${now.date}-${slot}`;
-    if (active || lastRunKey === runKey) return;
+    if (active || lastRunKey === runKey) {
+      if (lastRunKey === runKey) {
+        console.log(`SCHEDULER_SKIP_ALREADY_RUN ${slot} WAT current=${now.time} WAT`);
+      }
+      return;
+    }
 
     active = true;
     lastRunKey = runKey;
-    console.log(`SCHEDULER_TRIGGER ${slot} WAT`);
+    console.log(`SCHEDULER_TRIGGER ${slot} WAT current=${now.time} WAT`);
 
     try {
       await runSignalBatch();
@@ -251,6 +257,25 @@ function watParts(date: Date): { date: string; time: string } {
     date: `${get('year')}-${get('month')}-${get('day')}`,
     time: `${get('hour')}:${get('minute')}`
   };
+}
+
+function dueScheduleSlot(currentTime: string, scanTimes: string[], graceMinutes: number): string | undefined {
+  const currentMinute = minutesOfDay(currentTime);
+  if (!Number.isFinite(currentMinute)) return undefined;
+
+  return scanTimes.find((slot) => {
+    const slotMinute = minutesOfDay(slot);
+    if (!Number.isFinite(slotMinute)) return false;
+
+    const minutesLate = currentMinute - slotMinute;
+    return minutesLate >= 0 && minutesLate <= graceMinutes;
+  });
+}
+
+function minutesOfDay(time: string): number {
+  const [hour, minute] = time.split(':').map((part) => Number(part));
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return Number.NaN;
+  return (hour * 60) + minute;
 }
 
 const manualMode = ['--dry-run', '--no-send', '--once'].some((flag) => process.argv.includes(flag));
