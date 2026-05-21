@@ -131,7 +131,8 @@ async function runSignalBatch() {
 
   let sentCount = 0;
   let eliteSent = 0;
-  const batchLimit = Number(process.env.MAX_SIGNALS_PER_BATCH || 2);
+  const dailyLimit = Number(process.env.MAX_DAILY_SIGNALS || 5);
+  const batchLimit = Number(process.env.MAX_SIGNALS_PER_BATCH || dailyLimit);
 
   for (const signal of deliverySignals) {
     if (sentCount >= batchLimit) break;
