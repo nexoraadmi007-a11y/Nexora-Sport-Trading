@@ -27,6 +27,7 @@ interface OddsApiEvent {
       key: string;
       outcomes?: Array<{
         name: string;
+        description?: string;
         price: number;
         point?: number;
       }>;
@@ -126,7 +127,8 @@ export class DataEngine {
   private async enrichEventMarkets(event: OddsApiEvent, markets: string, counterKey: string): Promise<OddsApiEvent> {
     if (!this.shouldFetchAdditionalMarket(event.id, counterKey)) return event;
 
-    const cacheKey = `odds-api:event:${event.sport_key}:${event.id}:markets:${markets}`;
+    const regions = additionalMarketRegions(event.sport_key, counterKey);
+    const cacheKey = `odds-api:event:${event.sport_key}:${event.id}:regions:${regions}:markets:${markets}`;
     const cached = await this.cache.get<OddsApiEvent>(cacheKey);
     if (cached) return mergeBookmakerMarkets(event, cached);
 
@@ -140,7 +142,7 @@ export class DataEngine {
     try {
       const params = new URLSearchParams({
         apiKey: process.env.ODDS_API_KEY || '',
-        regions: process.env.ODDS_ADDITIONAL_MARKET_REGIONS || 'uk',
+        regions,
         markets,
         oddsFormat: 'decimal',
         dateFormat: 'iso'
@@ -148,6 +150,7 @@ export class DataEngine {
 
       const response = await fetchWithRetry(`https://api.the-odds-api.com/v4/sports/${event.sport_key}/events/${event.id}/odds?${params}`);
       if (!response.ok) {
+        console.warn(`The Odds API failed for ${event.sport_key} ${markets}: ${response.status} ${await response.text()}`);
         const stale = await this.cache.getStale<OddsApiEvent>(cacheKey, hours(12));
         if (stale) return mergeBookmakerMarkets(event, stale);
         return event;
@@ -156,7 +159,8 @@ export class DataEngine {
       const enriched = await response.json() as OddsApiEvent;
       await this.cache.set(cacheKey, enriched, oddsRefreshTtlMs([event]));
       return mergeBookmakerMarkets(event, enriched);
-    } catch {
+    } catch (error) {
+      console.warn(`The Odds API unavailable for ${event.sport_key} ${markets}: ${error instanceof Error ? error.message : String(error)}`);
       const stale = await this.cache.getStale<OddsApiEvent>(cacheKey, hours(12));
       if (stale) return mergeBookmakerMarkets(event, stale);
       return event;
@@ -198,10 +202,10 @@ export class DataEngine {
   private shouldFetchAdditionalMarket(eventId: string, namespace: string): boolean {
     const limit = Number(
       namespace === 'nbaFirstHalf'
-        ? process.env.NBA_H1_EVENT_LIMIT || 2
+        ? Math.max(Number(process.env.NBA_H1_EVENT_LIMIT || 0), 6)
         : namespace === 'nbaPlayerProps'
-          ? process.env.NBA_PLAYER_PROPS_EVENT_LIMIT || 1
-          : process.env.BTTS_EVENT_LIMIT || 6
+          ? Math.max(Number(process.env.NBA_PLAYER_PROPS_EVENT_LIMIT || 0), 6)
+          : Math.max(Number(process.env.BTTS_EVENT_LIMIT || 0), 6)
     );
     if (!this.additionalMarketSeen.has(namespace)) this.additionalMarketSeen.set(namespace, new Set<string>());
     const seen = this.additionalMarketSeen.get(namespace);
@@ -367,6 +371,18 @@ function configuredSportKeys(envName: string, fallback: string[]): string[] {
   return keys.length > 0 ? keys : fallback;
 }
 
+function additionalMarketRegions(sportKey: string, namespace: string): string {
+  if (sportKey === 'basketball_nba') {
+    return process.env.NBA_ADDITIONAL_MARKET_REGIONS || 'us';
+  }
+
+  if (namespace === 'btts') {
+    return process.env.FOOTBALL_ADDITIONAL_MARKET_REGIONS || process.env.ODDS_ADDITIONAL_MARKET_REGIONS || 'uk,eu,us';
+  }
+
+  return process.env.ODDS_ADDITIONAL_MARKET_REGIONS || 'uk,eu,us';
+}
+
 function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
   const prices: MarketPrice[] = [];
   for (const bookmaker of event.bookmakers || []) {
@@ -375,7 +391,7 @@ function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
         prices.push({
           fixtureId: event.id,
           market: normalizeMarket(market.key, outcome),
-          selection: outcome.name,
+          selection: normalizeSelection(market.key, outcome),
           bookmaker: bookmaker.title,
           odds: outcome.price,
           capturedAt: new Date()
@@ -386,8 +402,13 @@ function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
   return prices;
 }
 
-function normalizeMarket(marketKey: string, outcome: { name: string; point?: number }): string {
-  if (marketKey.startsWith('player_')) return `${marketKey} ${outcome.point ?? ''}`.trim();
+function normalizeSelection(marketKey: string, outcome: { name: string; description?: string }): string {
+  if (marketKey.startsWith('player_')) return outcome.description || outcome.name;
+  return outcome.name;
+}
+
+function normalizeMarket(marketKey: string, outcome: { name: string; description?: string; point?: number }): string {
+  if (marketKey.startsWith('player_')) return `${marketKey} ${outcome.name} ${outcome.point ?? ''}`.trim();
   if (marketKey === 'totals_h1') return `${outcome.name} ${outcome.point ?? ''} H1`.trim();
   if (marketKey === 'totals') return `${outcome.name} ${outcome.point ?? ''}`.trim();
   if (marketKey === 'btts') return `BTTS ${outcome.name}`;

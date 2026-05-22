@@ -13,7 +13,6 @@ export class SignalEngine {
     }
 
     return [...unique.values()]
-      .sort((a, b) => b.qualityScore - a.qualityScore)
-      .slice(0, Number(process.env.MAX_DAILY_SIGNALS || 5));
+      .sort((a, b) => b.qualityScore - a.qualityScore);
   }
 }

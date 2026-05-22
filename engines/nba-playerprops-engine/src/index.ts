@@ -21,6 +21,7 @@ export class NbaPlayerPropsEngine implements MarketEngine {
 
     const candidates: SignalCandidate[] = [];
     const playerIndex = new Map(context.playerStats.map((stat) => [normalizeName(stat.playerName), stat]));
+    const fixtureIndex = new Map(context.fixtures.map((fixture) => [fixture.id, fixture]));
     const propPrices = context.prices.filter((price) =>
       [...PROP_MARKETS.keys()].some((key) => price.market.startsWith(key)) &&
       price.odds >= MIN_ODDS &&
@@ -48,6 +49,7 @@ export class NbaPlayerPropsEngine implements MarketEngine {
       candidates.push({
         sport: 'nba',
         engine: this.name,
+        fixture: fixtureIndex.get(price.fixtureId),
         subject: stat.playerName,
         market: readableMarket(marketKey, side, line),
         selection: price.selection,

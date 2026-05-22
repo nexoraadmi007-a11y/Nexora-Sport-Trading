@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node dist/main.js",
     "dev": "ts-node src/main.ts --once",
-    "resend": "ts-node src/main.ts --once --resend",
+    "resend": "ts-node src/main.ts --once",
+    "force-resend": "ts-node src/main.ts --once --force-resend",
     "scheduler": "ts-node src/main.ts",
     "dry-run": "ts-node src/main.ts --dry-run",
     "no-send": "ts-node src/main.ts --no-send",

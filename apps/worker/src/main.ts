@@ -89,6 +89,7 @@ async function runSignalBatch() {
   }
 
   const persistence = new PersistenceEngine();
+  const forceResend = process.argv.includes('--force-resend');
 
   if (approved.length === 0) {
     if (process.argv.includes('--no-send')) {
@@ -106,7 +107,6 @@ async function runSignalBatch() {
     return;
   }
 
-  const eliteLimit = Number(process.env.MAX_ELITE_SIGNALS_PER_BATCH || 2);
   const eliteSignals = approved.filter((item) => item.tier === 'A+');
   const strongSignals = approved.filter((item) => item.tier === 'A');
   const deliverySignals = eliteSignals.length > 0
@@ -130,27 +130,20 @@ async function runSignalBatch() {
   }
 
   let sentCount = 0;
-  let eliteSent = 0;
-  const dailyLimit = Number(process.env.MAX_DAILY_SIGNALS || 5);
-  const batchLimit = Number(process.env.MAX_SIGNALS_PER_BATCH || dailyLimit);
 
   for (const signal of deliverySignals) {
-    if (sentCount >= batchLimit) break;
-    if (signal.tier === 'A+' && eliteSent >= eliteLimit) continue;
-
     if (process.argv.includes('--no-send')) {
       console.log(`NO-SEND ${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market} @ ${signal.odds} | persistence skipped`);
       sentCount += 1;
-      if (signal.tier === 'A+') eliteSent += 1;
       continue;
     }
 
-    if (!process.argv.includes('--resend') && await persistence.hasDuplicateSignal(signal)) {
+    if (!forceResend && await persistence.hasDuplicateSignal(signal)) {
       console.log(`SKIP duplicate persisted signal | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market}`);
       continue;
     }
 
-    const signalId = process.argv.includes('--resend') ? undefined : await persistence.saveApprovedSignal(signal);
+    const signalId = forceResend ? undefined : await persistence.saveApprovedSignal(signal);
     try {
       await telegram.sendSignal(signal);
       console.log(`TELEGRAM_SENT ${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market}`);
@@ -173,7 +166,6 @@ async function runSignalBatch() {
     }
 
     sentCount += 1;
-    if (signal.tier === 'A+') eliteSent += 1;
   }
 
   if (sentCount === 0 && !process.argv.includes('--no-send')) {
