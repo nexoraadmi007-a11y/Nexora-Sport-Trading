@@ -84,7 +84,7 @@ async function runSignalBatch() {
     console.log(`Approved: ${approved.length}`);
     console.log(`Approved by engine: ${formatSignalCounts(approved)}`);
     for (const signal of approved.slice(0, 5)) {
-      console.log(`${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market} @ ${signal.odds} | EV ${(signal.ev * 100).toFixed(1)}% | Q ${signal.qualityScore}`);
+      console.log(`${signal.tier} | ${signal.engine} | ${signalLabel(signal)} | ${signal.market} @ ${signal.odds} | EV ${(signal.ev * 100).toFixed(1)}% | Q ${signal.qualityScore}`);
     }
     return;
   }
@@ -108,11 +108,7 @@ async function runSignalBatch() {
     return;
   }
 
-  const eliteSignals = approved.filter((item) => item.tier === 'A+');
-  const strongSignals = approved.filter((item) => item.tier === 'A');
-  const deliverySignals = eliteSignals.length > 0
-    ? [...eliteSignals, ...strongSignals]
-    : strongSignals;
+  const deliverySignals = approved;
 
   if (deliverySignals.length === 0) {
     if (process.argv.includes('--no-send')) {
@@ -134,20 +130,20 @@ async function runSignalBatch() {
 
   for (const signal of deliverySignals) {
     if (process.argv.includes('--no-send')) {
-      console.log(`NO-SEND ${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market} @ ${signal.odds} | persistence skipped`);
+      console.log(`NO-SEND ${signal.tier} | ${signal.engine} | ${signalLabel(signal)} | ${signal.market} @ ${signal.odds} | persistence skipped`);
       sentCount += 1;
       continue;
     }
 
     if (!forceResend && await persistence.hasDuplicateSignal(signal)) {
-      console.log(`SKIP duplicate persisted signal | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market}`);
+      console.log(`SKIP duplicate persisted signal | ${signalLabel(signal)} | ${signal.market}`);
       continue;
     }
 
     const signalId = forceResend ? undefined : await persistence.saveApprovedSignal(signal);
     try {
       await telegram.sendSignal(signal);
-      console.log(`TELEGRAM_SENT ${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market}`);
+      console.log(`TELEGRAM_SENT ${signal.tier} | ${signal.engine} | ${signalLabel(signal)} | ${signal.market}`);
       await persistence.markSignalSent(signalId);
       await persistence.logTelegram({
         signalId,
@@ -270,6 +266,11 @@ function formatLeagueCounts(fixtures: Array<{ league: string; country?: string }
     .sort((a, b) => b[1] - a[1])
     .map(([league, count]) => `${league}: ${count}`)
     .join(', ') || 'none';
+}
+
+function signalLabel(signal: { subject?: string; fixture?: { homeTeam?: string; awayTeam?: string } }): string {
+  const match = `${signal.fixture?.homeTeam || 'N/A'} vs ${signal.fixture?.awayTeam || 'N/A'}`;
+  return signal.subject ? `${signal.subject} | ${match}` : match;
 }
 
 function formatSignalCounts(signals: Array<{ engine: string }>): string {
