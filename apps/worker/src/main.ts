@@ -82,6 +82,7 @@ async function runSignalBatch() {
     }
     console.log(`Candidates: ${candidates.length}`);
     console.log(`Approved: ${approved.length}`);
+    console.log(`Approved by engine: ${formatSignalCounts(approved)}`);
     for (const signal of approved.slice(0, 5)) {
       console.log(`${signal.tier} | ${signal.engine} | ${signal.fixture?.homeTeam} vs ${signal.fixture?.awayTeam} | ${signal.market} @ ${signal.odds} | EV ${(signal.ev * 100).toFixed(1)}% | Q ${signal.qualityScore}`);
     }
@@ -268,6 +269,18 @@ function formatLeagueCounts(fixtures: Array<{ league: string; country?: string }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([league, count]) => `${league}: ${count}`)
+    .join(', ') || 'none';
+}
+
+function formatSignalCounts(signals: Array<{ engine: string }>): string {
+  const counts = new Map<string, number>();
+  for (const signal of signals) {
+    counts.set(signal.engine, (counts.get(signal.engine) || 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([engine, count]) => `${engine}: ${count}`)
     .join(', ') || 'none';
 }
 
