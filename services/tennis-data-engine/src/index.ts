@@ -1,6 +1,6 @@
 import type { EngineContext, FixtureRef, MarketPrice } from '@nexora/types';
 
-const DEFAULT_TENNIS_SPORT_KEYS = ['tennis_atp', 'tennis_wta'];
+const DEFAULT_TENNIS_SPORT_KEYS = ['tennis_atp_french_open', 'tennis_wta_french_open'];
 
 interface OddsApiEvent {
   id: string;
