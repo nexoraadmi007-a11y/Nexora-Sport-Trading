@@ -2,6 +2,10 @@ import { DataEngine } from '@nexora/data-engine';
 import { FootballBttsEngine } from '@nexora/football-btts-engine';
 import { FootballDoubleChanceEngine } from '@nexora/football-doublechance-engine';
 import { FootballOver15Engine } from '@nexora/football-over15-engine';
+import { MlbDataEngine } from '@nexora/mlb-data-engine';
+import { MlbFirst5Engine } from '@nexora/mlb-first5-engine';
+import { MlbPitcherPropsEngine } from '@nexora/mlb-pitcherprops-engine';
+import { MlbTeamTotalsEngine } from '@nexora/mlb-teamtotals-engine';
 import { NbaFirstHalfEngine } from '@nexora/nba-firsthalf-engine';
 import { NbaPlayerPropsEngine } from '@nexora/nba-playerprops-engine';
 import { NbaTeamTotalsEngine } from '@nexora/nba-teamtotals-engine';
@@ -9,8 +13,12 @@ import { PersistenceEngine } from '@nexora/persistence-engine';
 import { RiskEngine } from '@nexora/risk-engine';
 import { loadDotEnv, validateRequiredEnv } from '@nexora/shared';
 import { SignalEngine } from '@nexora/signal-engine';
+import { TennisDataEngine } from '@nexora/tennis-data-engine';
+import { TennisFirstSetEngine } from '@nexora/tennis-firstset-engine';
+import { TennisHandicapEngine } from '@nexora/tennis-handicap-engine';
+import { TennisOverGamesEngine } from '@nexora/tennis-overgames-engine';
 import { TelegramEngine } from '@nexora/telegram-engine';
-import type { MarketEngine } from '@nexora/types';
+import type { EngineContext, MarketEngine } from '@nexora/types';
 
 const engines: MarketEngine[] = [
   new FootballOver15Engine(),
@@ -18,7 +26,13 @@ const engines: MarketEngine[] = [
   new FootballDoubleChanceEngine(),
   new NbaPlayerPropsEngine(),
   new NbaTeamTotalsEngine(),
-  new NbaFirstHalfEngine()
+  new NbaFirstHalfEngine(),
+  new TennisOverGamesEngine(),
+  new TennisHandicapEngine(),
+  new TennisFirstSetEngine(),
+  new MlbTeamTotalsEngine(),
+  new MlbFirst5Engine(),
+  new MlbPitcherPropsEngine()
 ];
 
 async function runSignalBatch() {
@@ -31,7 +45,7 @@ async function runSignalBatch() {
   const signalEngine = new SignalEngine();
   const riskEngine = new RiskEngine();
   const telegram = new TelegramEngine();
-  const context = await dataEngine.loadContext();
+  const context = await loadMultiSportContext(dataEngine);
   const engineResults = await Promise.all(engines.map(async (engine) => ({
     engine: engine.name,
     candidates: await engine.generate(context)
@@ -42,6 +56,8 @@ async function runSignalBatch() {
   if (process.argv.includes('--dry-run')) {
     const footballFixtures = context.fixtures.filter((fixture) => fixture.sport === 'football');
     const nbaFixtures = context.fixtures.filter((fixture) => fixture.sport === 'nba');
+    const tennisFixtures = context.fixtures.filter((fixture) => fixture.sport === 'tennis');
+    const mlbFixtures = context.fixtures.filter((fixture) => fixture.sport === 'mlb');
     const over15Prices = context.prices.filter((price) => price.market === 'Over 1.5');
     const bttsPrices = context.prices.filter((price) => price.market === 'BTTS Yes');
     const h2hPrices = context.prices.filter((price) => price.market === 'Double Chance Candidate');
@@ -57,6 +73,8 @@ async function runSignalBatch() {
     console.log(`NEXORA dry run: fixtures=${context.fixtures.length}, prices=${context.prices.length}`);
     console.log(`Football fixtures: ${footballFixtures.length} (${formatLeagueCounts(footballFixtures)})`);
     console.log(`NBA fixtures: ${nbaFixtures.length}`);
+    console.log(`Tennis fixtures: ${tennisFixtures.length} (${formatLeagueCounts(tennisFixtures)})`);
+    console.log(`MLB fixtures: ${mlbFixtures.length} (${formatLeagueCounts(mlbFixtures)})`);
     console.log(`Over 1.5 prices: ${over15Prices.length}`);
     if (over15Prices.length > 0) {
       const odds = over15Prices.map((price) => price.odds).sort((a, b) => a - b);
@@ -176,6 +194,21 @@ async function runSignalBatch() {
   }
 
   await persistence.disconnect();
+}
+
+async function loadMultiSportContext(dataEngine: DataEngine): Promise<EngineContext> {
+  const [core, tennis, mlb] = await Promise.all([
+    dataEngine.loadContext(),
+    new TennisDataEngine().loadContext(),
+    new MlbDataEngine().loadContext()
+  ]);
+
+  return {
+    fixtures: [...core.fixtures, ...tennis.fixtures, ...mlb.fixtures],
+    prices: [...core.prices, ...tennis.prices, ...mlb.prices],
+    playerStats: [...core.playerStats, ...tennis.playerStats, ...mlb.playerStats],
+    now: core.now
+  };
 }
 
 function startScheduler(): void {

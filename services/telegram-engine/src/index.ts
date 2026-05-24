@@ -34,8 +34,8 @@ export class TelegramEngine {
 export function formatSignal(signal: SignalCandidate): string {
   const fixture = signal.fixture;
   const details = marketDetails(signal);
-  const sportIcon = signal.sport === 'nba' ? '🏀' : '⚽';
-  const sportName = signal.sport === 'nba' ? 'NBA Basketball' : 'Football';
+  const sportIcon = sportIconFor(signal.sport);
+  const sportName = sportNameFor(signal.sport);
   const country = fixture?.country || fallbackCountry(signal);
   const league = fixture?.league ? `${fixture.league}${country ? ` (${country})` : ''}` : country || 'N/A';
   const match = fixture?.homeTeam && fixture?.awayTeam ? `${fixture.homeTeam} vs ${fixture.awayTeam}` : 'N/A';
@@ -83,7 +83,7 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
     const side = titleCase(total[2]);
     const line = total[3];
     const half = total[4] ? 'First Half ' : '';
-    const unit = signal.sport === 'nba' ? 'Points' : 'Goals';
+    const unit = unitFor(signal.sport);
     return {
       market: `${half}${signal.sport === 'nba' ? 'Game Total' : 'Total Goals'}`,
       selection: `${side} ${line} ${unit}`
@@ -122,6 +122,8 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
 
 function fallbackCountry(signal: SignalCandidate): string | undefined {
   if (signal.sport === 'nba') return 'USA';
+  if (signal.sport === 'mlb') return 'USA';
+  if (signal.sport === 'tennis') return 'International';
   const league = signal.fixture?.league.toLowerCase() || '';
   if (league.includes('premier league')) return 'England';
   if (league.includes('la liga')) return 'Spain';
@@ -129,6 +131,27 @@ function fallbackCountry(signal: SignalCandidate): string | undefined {
   if (league.includes('bundesliga')) return 'Germany';
   if (league.includes('ligue')) return 'France';
   return undefined;
+}
+
+function sportIconFor(sport: SignalCandidate['sport']): string {
+  if (sport === 'nba') return '🏀';
+  if (sport === 'tennis') return '🎾';
+  if (sport === 'mlb') return '⚾';
+  return '⚽';
+}
+
+function sportNameFor(sport: SignalCandidate['sport']): string {
+  if (sport === 'nba') return 'NBA Basketball';
+  if (sport === 'tennis') return 'Tennis';
+  if (sport === 'mlb') return 'MLB Baseball';
+  return 'Football';
+}
+
+function unitFor(sport: SignalCandidate['sport']): string {
+  if (sport === 'nba') return 'Points';
+  if (sport === 'tennis') return 'Games';
+  if (sport === 'mlb') return 'Runs';
+  return 'Goals';
 }
 
 function formatWatTime(date: Date): string {

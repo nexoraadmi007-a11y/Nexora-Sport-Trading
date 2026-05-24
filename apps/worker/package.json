@@ -19,6 +19,10 @@
     "@nexora/football-btts-engine": "0.1.0",
     "@nexora/football-doublechance-engine": "0.1.0",
     "@nexora/football-over15-engine": "0.1.0",
+    "@nexora/mlb-data-engine": "0.1.0",
+    "@nexora/mlb-first5-engine": "0.1.0",
+    "@nexora/mlb-pitcherprops-engine": "0.1.0",
+    "@nexora/mlb-teamtotals-engine": "0.1.0",
     "@nexora/nba-firsthalf-engine": "0.1.0",
     "@nexora/nba-playerprops-engine": "0.1.0",
     "@nexora/nba-teamtotals-engine": "0.1.0",
@@ -26,6 +30,10 @@
     "@nexora/risk-engine": "0.1.0",
     "@nexora/shared": "0.1.0",
     "@nexora/signal-engine": "0.1.0",
+    "@nexora/tennis-data-engine": "0.1.0",
+    "@nexora/tennis-firstset-engine": "0.1.0",
+    "@nexora/tennis-handicap-engine": "0.1.0",
+    "@nexora/tennis-overgames-engine": "0.1.0",
     "@nexora/telegram-engine": "0.1.0"
   },
   "devDependencies": {
