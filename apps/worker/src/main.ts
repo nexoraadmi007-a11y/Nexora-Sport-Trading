@@ -8,7 +8,7 @@ import { NbaTeamTotalsEngine } from '@nexora/nba-teamtotals-engine';
 import { PersistenceEngine } from '@nexora/persistence-engine';
 import { RiskEngine } from '@nexora/risk-engine';
 import { loadDotEnv, validateRequiredEnv } from '@nexora/shared';
-import { SignalEngine } from '@nexora/signal-engine';
+import { SignalEngine, type SignalAuditResult } from '@nexora/signal-engine';
 import { TelegramEngine } from '@nexora/telegram-engine';
 import type { EngineContext, MarketEngine, MarketPrice, SignalCandidate } from '@nexora/types';
 
@@ -37,7 +37,8 @@ async function runSignalBatch() {
     candidates: await engine.generate(context)
   })));
   const candidates = engineResults.flatMap((result) => result.candidates);
-  const approved = riskEngine.removeCorrelatedExposure(signalEngine.approve(candidates));
+  const signalAudit = signalEngine.audit(candidates);
+  const approved = riskEngine.removeCorrelatedExposure(signalAudit.approved);
 
   if (process.argv.includes('--dry-run')) {
     const footballFixtures = context.fixtures.filter((fixture) => fixture.sport === 'football');
@@ -83,7 +84,7 @@ async function runSignalBatch() {
     console.log(`Candidates: ${candidates.length}`);
     console.log(`Approved: ${approved.length}`);
     console.log(`Approved by engine: ${formatSignalCounts(approved)}`);
-    logScanDiagnostics(context, engineResults, candidates, approved);
+    logScanDiagnostics(context, engineResults, candidates, approved, signalAudit);
     for (const signal of approved.slice(0, 5)) {
       console.log(`${signal.tier} | ${signal.engine} | ${signalLabel(signal)} | ${signal.market} @ ${signal.odds} | EV ${(signal.ev * 100).toFixed(1)}% | Q ${signal.qualityScore}`);
     }
@@ -290,14 +291,24 @@ function logScanDiagnostics(
   context: EngineContext,
   engineResults: Array<{ engine: string; candidates: SignalCandidate[] }>,
   candidates: SignalCandidate[],
-  approved: SignalCandidate[]
+  approved: SignalCandidate[],
+  signalAudit: SignalAuditResult
 ): void {
   const rejectedAfterEngine = Math.max(candidates.length - approved.length, 0);
   console.log('Diagnostics:');
   console.log(`Signals rejected after engine pass: ${rejectedAfterEngine}`);
+  console.log(`False-positive detector rejections: ${formatAuditRejections(signalAudit)}`);
   console.log(`Engine zero-output reasons: ${engineZeroReasons(context, engineResults).join(' | ') || 'none'}`);
   console.log(`Football market coverage: ${footballCoverage(context).join(' | ') || 'none'}`);
   console.log(`NBA market coverage: ${nbaCoverage(context).join(' | ') || 'none'}`);
+}
+
+function formatAuditRejections(signalAudit: SignalAuditResult): string {
+  if (signalAudit.rejected.length === 0) return 'none';
+  return signalAudit.rejected
+    .slice(0, 8)
+    .map((item) => `${item.signal.engine} ${signalLabel(item.signal)} ${item.signal.market}: ${item.reasons.join(', ')}`)
+    .join(' | ');
 }
 
 function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine: string; candidates: SignalCandidate[] }>): string[] {

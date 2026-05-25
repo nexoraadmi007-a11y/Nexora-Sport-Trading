@@ -14,7 +14,6 @@ export class RiskEngine {
 
 function conflictKey(signal: SignalCandidate): string {
   const fixtureId = signal.fixture?.id || 'no-fixture';
-  const subject = signal.subject || signal.selection;
-  const market = signal.market.replace(/\b(Over|Under)\b/i, '').replace(/\s+/g, ' ').trim();
-  return `${signal.sport}:${fixtureId}:${signal.engine}:${subject}:${market}`;
+  const subject = signal.subject || 'match';
+  return `${signal.sport}:${fixtureId}:${subject}`;
 }
