@@ -1,5 +1,5 @@
 export function isPreferredBookmaker(bookmaker: string): boolean {
-  const preferred = (process.env.PREFERRED_BOOKMAKERS || '1xbet,1xbet,1xBet')
+  const preferred = (process.env.PREFERRED_BOOKMAKERS || '1xBet')
     .split(',')
     .map((value) => normalizeBookmaker(value))
     .filter(Boolean);
