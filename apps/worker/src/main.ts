@@ -10,7 +10,7 @@ import { RiskEngine } from '@nexora/risk-engine';
 import { loadDotEnv, validateRequiredEnv } from '@nexora/shared';
 import { SignalEngine } from '@nexora/signal-engine';
 import { TelegramEngine } from '@nexora/telegram-engine';
-import type { MarketEngine } from '@nexora/types';
+import type { EngineContext, MarketEngine, MarketPrice, SignalCandidate } from '@nexora/types';
 
 const engines: MarketEngine[] = [
   new FootballOver15Engine(),
@@ -83,6 +83,7 @@ async function runSignalBatch() {
     console.log(`Candidates: ${candidates.length}`);
     console.log(`Approved: ${approved.length}`);
     console.log(`Approved by engine: ${formatSignalCounts(approved)}`);
+    logScanDiagnostics(context, engineResults, candidates, approved);
     for (const signal of approved.slice(0, 5)) {
       console.log(`${signal.tier} | ${signal.engine} | ${signalLabel(signal)} | ${signal.market} @ ${signal.odds} | EV ${(signal.ev * 100).toFixed(1)}% | Q ${signal.qualityScore}`);
     }
@@ -283,6 +284,101 @@ function formatSignalCounts(signals: Array<{ engine: string }>): string {
     .sort((a, b) => b[1] - a[1])
     .map(([engine, count]) => `${engine}: ${count}`)
     .join(', ') || 'none';
+}
+
+function logScanDiagnostics(
+  context: EngineContext,
+  engineResults: Array<{ engine: string; candidates: SignalCandidate[] }>,
+  candidates: SignalCandidate[],
+  approved: SignalCandidate[]
+): void {
+  const rejectedAfterEngine = Math.max(candidates.length - approved.length, 0);
+  console.log('Diagnostics:');
+  console.log(`Signals rejected after engine pass: ${rejectedAfterEngine}`);
+  console.log(`Engine zero-output reasons: ${engineZeroReasons(context, engineResults).join(' | ') || 'none'}`);
+  console.log(`Football market coverage: ${footballCoverage(context).join(' | ') || 'none'}`);
+  console.log(`NBA market coverage: ${nbaCoverage(context).join(' | ') || 'none'}`);
+}
+
+function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine: string; candidates: SignalCandidate[] }>): string[] {
+  const reasons: string[] = [];
+  const resultMap = new Map(engineResults.map((result) => [result.engine, result.candidates.length]));
+
+  const over15 = context.prices.filter((price) => price.market === 'Over 1.5');
+  if ((resultMap.get('Over 1.5 Specialist') || 0) === 0) {
+    reasons.push(over15.length === 0 ? 'Over 1.5: no preferred-bookmaker Over 1.5 markets' : `Over 1.5: ${over15.length} markets failed probability/EV/quality filters`);
+  }
+
+  const btts = context.prices.filter((price) => price.market === 'BTTS Yes');
+  if ((resultMap.get('BTTS Specialist') || 0) === 0) {
+    reasons.push(btts.length === 0 ? 'BTTS: no preferred-bookmaker BTTS Yes markets' : `BTTS: ${btts.length} markets failed probability/EV/quality filters`);
+  }
+
+  const completeDoubleChance = context.fixtures
+    .filter((fixture) => fixture.sport === 'football')
+    .filter((fixture) => hasCompleteH2hSet(context.prices.filter((price) => price.fixtureId === fixture.id), fixture.homeTeam, fixture.awayTeam));
+  if ((resultMap.get('Double Chance Specialist') || 0) === 0) {
+    reasons.push(completeDoubleChance.length === 0 ? 'Double Chance: no complete preferred-bookmaker home/draw/away set' : `Double Chance: ${completeDoubleChance.length} complete sets failed EV/quality filters`);
+  }
+
+  const nbaTotals = context.prices.filter((price) => isNbaFixturePrice(context, price) && isGameTotal(price.market));
+  if ((resultMap.get('Team Totals') || 0) === 0) {
+    reasons.push(nbaTotals.length === 0 ? 'NBA totals: no preferred-bookmaker game-total markets' : `NBA totals: ${nbaTotals.length} markets failed EV/quality filters`);
+  }
+
+  const nbaH1 = context.prices.filter((price) => isNbaFixturePrice(context, price) && isFirstHalfTotal(price.market));
+  if ((resultMap.get('First Half Totals') || 0) === 0) {
+    reasons.push(nbaH1.length === 0 ? 'NBA first half: no preferred-bookmaker H1 total markets' : `NBA first half: ${nbaH1.length} markets failed EV/quality filters`);
+  }
+
+  const propPrices = context.prices.filter((price) => price.market.startsWith('player_'));
+  if ((resultMap.get('Player Props') || 0) === 0) {
+    reasons.push(propPrices.length === 0 ? 'NBA props: no preferred-bookmaker player prop markets' : `NBA props: ${propPrices.length} prop markets failed stat matching/EV/quality filters`);
+  }
+
+  return reasons;
+}
+
+function footballCoverage(context: EngineContext): string[] {
+  return context.fixtures
+    .filter((fixture) => fixture.sport === 'football')
+    .map((fixture) => {
+      const prices = context.prices.filter((price) => price.fixtureId === fixture.id);
+      const over15 = prices.filter((price) => price.market === 'Over 1.5').length;
+      const btts = prices.filter((price) => price.market === 'BTTS Yes').length;
+      const h2h = prices.filter((price) => price.market === 'Double Chance Candidate').length;
+      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: over15=${over15}, btts=${btts}, h2h=${h2h}`;
+    });
+}
+
+function nbaCoverage(context: EngineContext): string[] {
+  return context.fixtures
+    .filter((fixture) => fixture.sport === 'nba')
+    .map((fixture) => {
+      const prices = context.prices.filter((price) => price.fixtureId === fixture.id);
+      const totals = prices.filter((price) => isGameTotal(price.market)).length;
+      const h1 = prices.filter((price) => isFirstHalfTotal(price.market)).length;
+      const props = prices.filter((price) => price.market.startsWith('player_')).length;
+      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: totals=${totals}, h1=${h1}, props=${props}`;
+    });
+}
+
+function hasCompleteH2hSet(prices: MarketPrice[], homeTeam?: string, awayTeam?: string): boolean {
+  if (!homeTeam || !awayTeam) return false;
+  const selections = new Set(prices.filter((price) => price.market === 'Double Chance Candidate').map((price) => price.selection));
+  return selections.has(homeTeam) && selections.has(awayTeam) && selections.has('Draw');
+}
+
+function isNbaFixturePrice(context: EngineContext, price: MarketPrice): boolean {
+  return context.fixtures.some((fixture) => fixture.id === price.fixtureId && fixture.sport === 'nba');
+}
+
+function isGameTotal(market: string): boolean {
+  return /^Over \d+(\.\d+)?$/.test(market) || /^Under \d+(\.\d+)?$/.test(market);
+}
+
+function isFirstHalfTotal(market: string): boolean {
+  return /^Over \d+(\.\d+)? H1$/.test(market) || /^Under \d+(\.\d+)? H1$/.test(market);
 }
 
 function dueScheduleSlot(currentTime: string, scanTimes: string[], graceMinutes: number): string | undefined {

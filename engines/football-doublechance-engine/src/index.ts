@@ -19,7 +19,7 @@ export class FootballDoubleChanceEngine implements MarketEngine {
         price.fixtureId === fixture.id &&
         price.market === 'Double Chance Candidate'
       );
-      if (h2hPrices.length < 6 || !fixture.homeTeam || !fixture.awayTeam) continue;
+      if (h2hPrices.length < 3 || !fixture.homeTeam || !fixture.awayTeam) continue;
 
       const grouped = groupOutcomePrices(h2hPrices);
       const home = grouped.get(fixture.homeTeam);
@@ -51,6 +51,7 @@ export class FootballDoubleChanceEngine implements MarketEngine {
           sport: 'football',
           engine: this.name,
           fixture,
+          bookmaker: option.bookmaker,
           market: 'Double Chance',
           selection: option.selection,
           odds: option.odds,
@@ -68,11 +69,11 @@ export class FootballDoubleChanceEngine implements MarketEngine {
   }
 }
 
-function groupOutcomePrices(prices: Array<{ selection: string; odds: number }>): Map<string, Array<{ odds: number }>> {
-  const grouped = new Map<string, Array<{ odds: number }>>();
+function groupOutcomePrices(prices: Array<{ selection: string; odds: number; bookmaker?: string }>): Map<string, Array<{ odds: number; bookmaker?: string }>> {
+  const grouped = new Map<string, Array<{ odds: number; bookmaker?: string }>>();
   for (const price of prices) {
     const current = grouped.get(price.selection) || [];
-    current.push({ odds: price.odds });
+    current.push({ odds: price.odds, bookmaker: price.bookmaker });
     grouped.set(price.selection, current);
   }
   return grouped;
@@ -91,7 +92,7 @@ function normalizeProbabilities(input: { home: number; draw: number; away: numbe
   };
 }
 
-function buildOption(code: string, selection: string, baseProbability: number, a: Array<{ odds: number }>, b: Array<{ odds: number }>) {
+function buildOption(code: string, selection: string, baseProbability: number, a: Array<{ odds: number; bookmaker?: string }>, b: Array<{ odds: number; bookmaker?: string }>) {
   const fairOdds = 1 / baseProbability;
   const marginAdjustedOdds = fairOdds * 0.94;
   const stability = priceStability([...a, ...b]);
@@ -100,6 +101,7 @@ function buildOption(code: string, selection: string, baseProbability: number, a
     selection,
     baseProbability,
     odds: Number(clamp(marginAdjustedOdds, 1.01, 2.2).toFixed(2)),
+    bookmaker: a[0]?.bookmaker || b[0]?.bookmaker,
     stability,
     sourcePrices: a.length + b.length
   };
