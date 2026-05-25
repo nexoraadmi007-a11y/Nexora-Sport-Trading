@@ -123,8 +123,6 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
 
 function fallbackCountry(signal: SignalCandidate): string | undefined {
   if (signal.sport === 'nba') return 'USA';
-  if (signal.sport === 'mlb') return 'USA';
-  if (signal.sport === 'tennis') return 'International';
   const league = signal.fixture?.league.toLowerCase() || '';
   if (league.includes('premier league')) return 'England';
   if (league.includes('la liga')) return 'Spain';
@@ -136,22 +134,16 @@ function fallbackCountry(signal: SignalCandidate): string | undefined {
 
 function sportIconFor(sport: SignalCandidate['sport']): string {
   if (sport === 'nba') return '🏀';
-  if (sport === 'tennis') return '🎾';
-  if (sport === 'mlb') return '⚾';
   return '⚽';
 }
 
 function sportNameFor(sport: SignalCandidate['sport']): string {
   if (sport === 'nba') return 'NBA Basketball';
-  if (sport === 'tennis') return 'Tennis';
-  if (sport === 'mlb') return 'MLB Baseball';
   return 'Football';
 }
 
 function unitFor(sport: SignalCandidate['sport']): string {
   if (sport === 'nba') return 'Points';
-  if (sport === 'tennis') return 'Games';
-  if (sport === 'mlb') return 'Runs';
   return 'Goals';
 }
 
