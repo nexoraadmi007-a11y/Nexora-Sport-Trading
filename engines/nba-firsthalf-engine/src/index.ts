@@ -21,11 +21,11 @@ export class NbaFirstHalfEngine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (h1Prices.length < 4) continue;
+      if (h1Prices.length < 1) continue;
 
       for (const side of ['Over', 'Under'] as const) {
         const sidePrices = h1Prices.filter((price) => price.market.startsWith(side));
-        if (sidePrices.length < 2) continue;
+        if (sidePrices.length < 1) continue;
 
         const best = sidePrices.sort((a, b) => b.odds - a.odds)[0];
         const point = extractPoint(best.market);
@@ -45,6 +45,7 @@ export class NbaFirstHalfEngine implements MarketEngine {
           sport: 'nba',
           engine: this.name,
           fixture,
+          bookmaker: best.bookmaker,
           market: `First Half Total ${side} ${point}`,
           selection: `${side} ${point}`,
           odds: best.odds,

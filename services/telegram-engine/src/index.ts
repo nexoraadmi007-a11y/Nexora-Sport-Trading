@@ -49,6 +49,7 @@ export function formatSignal(signal: SignalCandidate): string {
     `🏆 League: ${league}`,
     `🏟 Match: ${match}`,
     `🕒 Time: ${fixture ? `${formatWatTime(fixture.startsAt)} WAT` : 'TBD'}`,
+    `🏦 Bookmaker: ${signal.bookmaker || 'Preferred book'}`,
     signal.subject ? `👤 Player: ${signal.subject}` : undefined,
     '',
     `🎯 Market: ${details.market}`,

@@ -20,7 +20,7 @@ export class TennisFirstSetEngine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (prices.length < 2) continue;
+      if (prices.length < 1) continue;
 
       for (const price of prices) {
         const similar = prices.filter((item) => item.market === price.market);
@@ -35,6 +35,7 @@ export class TennisFirstSetEngine implements MarketEngine {
           sport: 'tennis',
           engine: this.name,
           fixture,
+          bookmaker: price.bookmaker,
           market: price.market,
           selection: price.selection,
           odds: price.odds,

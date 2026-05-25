@@ -20,7 +20,7 @@ export class MlbTeamTotalsEngine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (prices.length < 2) continue;
+      if (prices.length < 1) continue;
 
       for (const price of prices) {
         const line = extractLine(price.market);
@@ -36,6 +36,7 @@ export class MlbTeamTotalsEngine implements MarketEngine {
           sport: 'mlb',
           engine: this.name,
           fixture,
+          bookmaker: price.bookmaker,
           market: price.market,
           selection: price.selection,
           odds: price.odds,

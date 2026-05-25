@@ -50,6 +50,7 @@ export class NbaPlayerPropsEngine implements MarketEngine {
         sport: 'nba',
         engine: this.name,
         fixture: fixtureIndex.get(price.fixtureId),
+        bookmaker: price.bookmaker,
         subject: stat.playerName,
         market: readableMarket(marketKey, side, line),
         selection: price.selection,

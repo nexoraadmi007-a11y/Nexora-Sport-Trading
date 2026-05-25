@@ -21,7 +21,7 @@ export class FootballOver15Engine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (prices.length < 2) continue;
+      if (prices.length < 1) continue;
 
       const best = prices.sort((a, b) => b.odds - a.odds)[0];
       const consensusProbability = impliedConsensusProbability(prices);
@@ -37,6 +37,7 @@ export class FootballOver15Engine implements MarketEngine {
         sport: 'football',
         engine: this.name,
         fixture,
+        bookmaker: best.bookmaker,
         market: 'Over 1.5 Goals',
         selection: 'Over 1.5',
         odds: best.odds,

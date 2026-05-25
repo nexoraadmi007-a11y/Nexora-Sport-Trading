@@ -34,6 +34,7 @@ export class MlbPitcherPropsEngine implements MarketEngine {
         sport: 'mlb',
         engine: this.name,
         fixture,
+        bookmaker: price.bookmaker,
         subject: price.selection,
         market: readableMarket(price.market),
         selection: price.selection,

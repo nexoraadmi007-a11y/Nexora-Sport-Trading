@@ -21,11 +21,11 @@ export class NbaTeamTotalsEngine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (totalPrices.length < 4) continue;
+      if (totalPrices.length < 1) continue;
 
       for (const side of ['Over', 'Under'] as const) {
         const sidePrices = totalPrices.filter((price) => price.market.startsWith(side));
-        if (sidePrices.length < 2) continue;
+        if (sidePrices.length < 1) continue;
 
         const best = sidePrices.sort((a, b) => b.odds - a.odds)[0];
         const point = extractPoint(best.market);
@@ -45,6 +45,7 @@ export class NbaTeamTotalsEngine implements MarketEngine {
           sport: 'nba',
           engine: this.name,
           fixture,
+          bookmaker: best.bookmaker,
           market: `Game Total Proxy ${side} ${point}`,
           selection: `${side} ${point}`,
           odds: best.odds,

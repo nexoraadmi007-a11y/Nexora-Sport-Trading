@@ -4,6 +4,7 @@ const MIN_ODDS = 1.65;
 const MAX_ODDS = 2.2;
 const MIN_EV = 0.025;
 const MIN_QUALITY = 70;
+const MIN_MATCH_GAMES_LINE = 16;
 
 export class TennisOverGamesEngine implements MarketEngine {
   name = 'Tennis Over Games';
@@ -20,11 +21,11 @@ export class TennisOverGamesEngine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (prices.length < 2) continue;
+      if (prices.length < 1) continue;
 
       const best = prices.sort((a, b) => b.odds - a.odds)[0];
       const line = extractLine(best.market);
-      if (!line) continue;
+      if (!line || line < MIN_MATCH_GAMES_LINE) continue;
 
       const stability = priceStability(prices);
       const trueProbability = clamp(impliedConsensus(prices) + surfaceDepthBoost(fixture.league, prices.length) + timingBoost(fixture.startsAt, context.now), 0.01, 0.78);
@@ -37,6 +38,7 @@ export class TennisOverGamesEngine implements MarketEngine {
         sport: 'tennis',
         engine: this.name,
         fixture,
+        bookmaker: best.bookmaker,
         market: `Over ${line} Games`,
         selection: `Over ${line}`,
         odds: best.odds,

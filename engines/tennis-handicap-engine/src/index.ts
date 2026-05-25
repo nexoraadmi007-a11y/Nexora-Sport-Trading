@@ -20,7 +20,7 @@ export class TennisHandicapEngine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (prices.length < 2) continue;
+      if (prices.length < 1) continue;
 
       for (const price of prices) {
         const line = extractSignedLine(price.market);
@@ -37,6 +37,7 @@ export class TennisHandicapEngine implements MarketEngine {
           sport: 'tennis',
           engine: this.name,
           fixture,
+          bookmaker: price.bookmaker,
           market: `Game Handicap ${line > 0 ? '+' : ''}${line}`,
           selection: price.selection,
           odds: price.odds,

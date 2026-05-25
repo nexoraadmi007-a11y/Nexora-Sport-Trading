@@ -95,6 +95,7 @@ function toFixture(event: OddsApiEvent): FixtureRef {
 function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
   const prices: MarketPrice[] = [];
   for (const bookmaker of event.bookmakers || []) {
+    if (!isPreferredBookmaker(bookmaker.title)) continue;
     for (const market of bookmaker.markets || []) {
       for (const outcome of market.outcomes || []) {
         prices.push({
@@ -120,4 +121,17 @@ function normalizeMarket(marketKey: string, outcome: { name: string; point?: num
   if (marketKey === 'totals_1st_set') return `First Set ${side} ${point ?? ''} Games`.trim();
   if (marketKey === 'h2h') return 'Match Winner';
   return marketKey;
+}
+
+function isPreferredBookmaker(bookmaker: string): boolean {
+  const preferred = (process.env.PREFERRED_BOOKMAKERS || '1xBet')
+    .split(',')
+    .map(normalizeBookmaker)
+    .filter(Boolean);
+  const normalized = normalizeBookmaker(bookmaker);
+  return preferred.length === 0 || preferred.some((item) => normalized.includes(item));
+}
+
+function normalizeBookmaker(bookmaker: string): string {
+  return bookmaker.toLowerCase().replace(/[^a-z0-9]/g, '');
 }

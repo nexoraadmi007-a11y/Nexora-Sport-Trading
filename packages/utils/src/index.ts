@@ -13,3 +13,4 @@ export function watCronTimes(): string[] {
 export function utcCronForWatScans(): string {
   return '30 8,12,16 * * *';
 }
+export * from './bookmakers';

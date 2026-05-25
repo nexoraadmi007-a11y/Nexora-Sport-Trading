@@ -21,7 +21,7 @@ export class FootballBttsEngine implements MarketEngine {
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
-      if (prices.length < 2) continue;
+      if (prices.length < 1) continue;
 
       const best = prices.sort((a, b) => b.odds - a.odds)[0];
       const consensusProbability = impliedConsensusProbability(prices);
@@ -39,6 +39,7 @@ export class FootballBttsEngine implements MarketEngine {
         sport: 'football',
         engine: this.name,
         fixture,
+        bookmaker: best.bookmaker,
         market: 'BTTS',
         selection: 'Yes',
         odds: best.odds,

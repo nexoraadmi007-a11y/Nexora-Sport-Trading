@@ -41,6 +41,7 @@ export interface SignalCandidate {
   engine: string;
   fixture?: FixtureRef;
   subject?: string;
+  bookmaker?: string;
   market: string;
   selection: string;
   odds: number;
