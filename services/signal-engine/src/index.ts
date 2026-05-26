@@ -51,9 +51,9 @@ function conflictKey(signal: SignalCandidate): string {
 function falsePositiveReasons(signal: SignalCandidate): string[] {
   const reasons: string[] = [];
   const confidence = normalizedConfidence(signal.confidence);
-  const minimumQuality = Number(process.env.MIN_SIGNAL_QUALITY || 78);
+  const minimumQuality = Number(process.env.MIN_SIGNAL_QUALITY || 72);
   const minimumEv = Number(process.env.MIN_SIGNAL_EV || 0.03);
-  const minimumConfidence = Number(process.env.MIN_SIGNAL_CONFIDENCE || 72);
+  const minimumConfidence = Number(process.env.MIN_SIGNAL_CONFIDENCE || 52);
 
   if (!signal.fixture) reasons.push('missing fixture context');
   if (!signal.bookmaker) reasons.push('missing bookmaker confirmation');
@@ -63,8 +63,8 @@ function falsePositiveReasons(signal: SignalCandidate): string[] {
   if (!Number.isFinite(signal.ev) || signal.ev < minimumEv) reasons.push('weak EV validation');
   if (!Number.isFinite(confidence) || confidence < minimumConfidence) reasons.push('confidence below desk threshold');
   if (!Number.isFinite(signal.qualityScore) || signal.qualityScore < minimumQuality) reasons.push('quality score below desk threshold');
-  if (signal.tier === 'B' && process.env.ALLOW_TIER_B_SIGNALS !== 'true') reasons.push('Tier B blocked by elite-only mode');
-  if (isMarketProxy(signal) && process.env.ALLOW_PROXY_MARKETS !== 'true') reasons.push('proxy market blocked');
+  if (signal.tier === 'B' && !isAcceptableTierB(signal, confidence)) reasons.push('Tier B below controlled-value band');
+  if (isMarketProxy(signal) && !isAcceptableProxy(signal)) reasons.push('proxy market below controlled-value band');
   if (isStaleFixture(signal)) reasons.push('fixture already started or stale');
 
   return reasons;
@@ -89,6 +89,16 @@ function maxOddsFor(signal: SignalCandidate): number {
 
 function isMarketProxy(signal: SignalCandidate): boolean {
   return /\bproxy\b/i.test(signal.market);
+}
+
+function isAcceptableTierB(signal: SignalCandidate, confidence: number): boolean {
+  if (process.env.ALLOW_TIER_B_SIGNALS === 'false') return false;
+  return signal.qualityScore >= 72 && signal.ev >= 0.03 && confidence >= 52;
+}
+
+function isAcceptableProxy(signal: SignalCandidate): boolean {
+  if (process.env.ALLOW_PROXY_MARKETS === 'true') return true;
+  return signal.qualityScore >= 80 && signal.ev >= 0.05;
 }
 
 function isStaleFixture(signal: SignalCandidate): boolean {
