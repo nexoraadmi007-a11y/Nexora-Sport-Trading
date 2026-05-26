@@ -159,6 +159,38 @@ model ApiLog {
   createdAt DateTime @default(now())
 }
 
+model TennisHardcourtSignal {
+  id          String   @id @default(cuid())
+  fixtureId   String?
+  league      String
+  match       String
+  market      String
+  selection   String
+  odds        Float
+  probability Float
+  ev          Float
+  confidence  Float
+  qualityScore Float
+  status      String
+  createdAt   DateTime @default(now())
+}
+
+model MlbFirst5Signal {
+  id          String   @id @default(cuid())
+  fixtureId   String?
+  league      String
+  match       String
+  market      String
+  selection   String
+  odds        Float
+  probability Float
+  ev          Float
+  confidence  Float
+  qualityScore Float
+  status      String
+  createdAt   DateTime @default(now())
+}
+
 // Archived rollback note:
 // TennisMatch, TennisPlayerProfile, TennisSurfaceProfile, TennisSignal,
 // MlbGame, MlbPitcherProfile, MlbTeamProfile, and MlbSignal are intentionally

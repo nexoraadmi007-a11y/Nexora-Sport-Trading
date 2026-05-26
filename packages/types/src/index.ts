@@ -1,4 +1,4 @@
-export type Sport = 'football' | 'nba';
+export type Sport = 'football' | 'nba' | 'tennis' | 'mlb';
 
 export type SignalTier = 'A+' | 'A' | 'B';
 

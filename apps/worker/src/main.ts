@@ -2,6 +2,8 @@ import { DataEngine } from '@nexora/data-engine';
 import { FootballBttsEngine } from '@nexora/football-btts-engine';
 import { FootballDoubleChanceEngine } from '@nexora/football-doublechance-engine';
 import { FootballOver15Engine } from '@nexora/football-over15-engine';
+import { MlbDataEngine } from '@nexora/mlb-data-engine';
+import { MlbFirst5Engine } from '@nexora/mlb-first5-engine';
 import { NbaFirstHalfEngine } from '@nexora/nba-firsthalf-engine';
 import { NbaPlayerPropsEngine } from '@nexora/nba-playerprops-engine';
 import { NbaTeamTotalsEngine } from '@nexora/nba-teamtotals-engine';
@@ -9,6 +11,8 @@ import { PersistenceEngine } from '@nexora/persistence-engine';
 import { RiskEngine } from '@nexora/risk-engine';
 import { loadDotEnv, validateRequiredEnv } from '@nexora/shared';
 import { SignalEngine, type SignalAuditResult } from '@nexora/signal-engine';
+import { TennisDataEngine } from '@nexora/tennis-data-engine';
+import { TennisHardcourtOverGamesEngine } from '@nexora/tennis-hardcourt-overgames-engine';
 import { TelegramEngine } from '@nexora/telegram-engine';
 import type { EngineContext, MarketEngine, MarketPrice, SignalCandidate } from '@nexora/types';
 
@@ -18,7 +22,9 @@ const engines: MarketEngine[] = [
   new FootballDoubleChanceEngine(),
   new NbaPlayerPropsEngine(),
   new NbaTeamTotalsEngine(),
-  new NbaFirstHalfEngine()
+  new NbaFirstHalfEngine(),
+  new TennisHardcourtOverGamesEngine(),
+  new MlbFirst5Engine()
 ];
 
 async function runSignalBatch() {
@@ -31,7 +37,7 @@ async function runSignalBatch() {
   const signalEngine = new SignalEngine();
   const riskEngine = new RiskEngine();
   const telegram = new TelegramEngine();
-  const context = await dataEngine.loadContext();
+  const context = await loadSpecializedContext(dataEngine);
   const engineResults = await Promise.all(engines.map(async (engine) => ({
     engine: engine.name,
     candidates: await engine.generate(context)
@@ -43,6 +49,8 @@ async function runSignalBatch() {
   if (process.argv.includes('--dry-run')) {
     const footballFixtures = context.fixtures.filter((fixture) => fixture.sport === 'football');
     const nbaFixtures = context.fixtures.filter((fixture) => fixture.sport === 'nba');
+    const tennisFixtures = context.fixtures.filter((fixture) => fixture.sport === 'tennis');
+    const mlbFixtures = context.fixtures.filter((fixture) => fixture.sport === 'mlb');
     const over15Prices = context.prices.filter((price) => price.market === 'Over 1.5');
     const bttsPrices = context.prices.filter((price) => price.market === 'BTTS Yes');
     const h2hPrices = context.prices.filter((price) => price.market === 'Double Chance Candidate');
@@ -55,9 +63,13 @@ async function runSignalBatch() {
       (/^Over \d+(\.\d+)? H1$/.test(price.market) || /^Under \d+(\.\d+)? H1$/.test(price.market))
     );
     const playerPropPrices = context.prices.filter((price) => price.market.startsWith('player_'));
+    const tennisOverGames = context.prices.filter((price) => price.market.endsWith('Games') && price.market.startsWith('Over'));
+    const mlbFirst5 = context.prices.filter((price) => price.market.startsWith('First 5 Innings'));
     console.log(`NEXORA dry run: fixtures=${context.fixtures.length}, prices=${context.prices.length}`);
     console.log(`Football fixtures: ${footballFixtures.length} (${formatLeagueCounts(footballFixtures)})`);
     console.log(`NBA fixtures: ${nbaFixtures.length}`);
+    console.log(`ATP hard-court tennis fixtures: ${tennisFixtures.length} (${formatLeagueCounts(tennisFixtures)})`);
+    console.log(`MLB fixtures: ${mlbFixtures.length} (${formatLeagueCounts(mlbFixtures)})`);
     console.log(`Over 1.5 prices: ${over15Prices.length}`);
     if (over15Prices.length > 0) {
       const odds = over15Prices.map((price) => price.odds).sort((a, b) => a - b);
@@ -73,6 +85,8 @@ async function runSignalBatch() {
     console.log(`NBA first-half totals prices: ${nbaH1Totals.length}`);
     console.log(`NBA player stats rows: ${context.playerStats.length}`);
     console.log(`NBA player prop prices: ${playerPropPrices.length}`);
+    console.log(`ATP hard-court Over Games prices: ${tennisOverGames.length}`);
+    console.log(`MLB First 5 prices: ${mlbFirst5.length}`);
     const diagnostics = dataEngine.getDiagnostics();
     if (diagnostics) {
       console.log(`Cache: hits=${diagnostics.cache.hits}, misses=${diagnostics.cache.misses}, stale=${diagnostics.cache.staleHits}, writes=${diagnostics.cache.writes}`);
@@ -178,6 +192,21 @@ async function runSignalBatch() {
   }
 
   await persistence.disconnect();
+}
+
+async function loadSpecializedContext(dataEngine: DataEngine): Promise<EngineContext> {
+  const [core, tennis, mlb] = await Promise.all([
+    dataEngine.loadContext(),
+    new TennisDataEngine().loadContext(),
+    new MlbDataEngine().loadContext()
+  ]);
+
+  return {
+    fixtures: [...core.fixtures, ...tennis.fixtures, ...mlb.fixtures],
+    prices: [...core.prices, ...tennis.prices, ...mlb.prices],
+    playerStats: [...core.playerStats, ...tennis.playerStats, ...mlb.playerStats],
+    now: core.now
+  };
 }
 
 function startScheduler(): void {
@@ -301,6 +330,8 @@ function logScanDiagnostics(
   console.log(`Engine zero-output reasons: ${engineZeroReasons(context, engineResults).join(' | ') || 'none'}`);
   console.log(`Football market coverage: ${footballCoverage(context).join(' | ') || 'none'}`);
   console.log(`NBA market coverage: ${nbaCoverage(context).join(' | ') || 'none'}`);
+  console.log(`Tennis market coverage: ${tennisCoverage(context).join(' | ') || 'none'}`);
+  console.log(`MLB market coverage: ${mlbCoverage(context).join(' | ') || 'none'}`);
 }
 
 function formatAuditRejections(signalAudit: SignalAuditResult): string {
@@ -347,6 +378,16 @@ function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine
     reasons.push(propPrices.length === 0 ? 'NBA props: no preferred-bookmaker player prop markets' : `NBA props: ${propPrices.length} prop markets failed stat matching/EV/quality filters`);
   }
 
+  const tennisOverGames = context.prices.filter((price) => price.market.startsWith('Over') && price.market.endsWith('Games'));
+  if ((resultMap.get('ATP Hard Court Over Games') || 0) === 0) {
+    reasons.push(tennisOverGames.length === 0 ? 'ATP hard-court tennis: no confirmed hard-court Over Games markets' : `ATP hard-court tennis: ${tennisOverGames.length} markets failed competitiveness/dominance/EV filters`);
+  }
+
+  const mlbFirst5 = context.prices.filter((price) => price.market.startsWith('First 5 Innings'));
+  if ((resultMap.get('MLB First 5 Innings') || 0) === 0) {
+    reasons.push(mlbFirst5.length === 0 ? 'MLB First 5: no preferred-bookmaker First 5 markets' : `MLB First 5: ${mlbFirst5.length} markets failed pitcher/weather/volatility/EV filters`);
+  }
+
   return reasons;
 }
 
@@ -371,6 +412,26 @@ function nbaCoverage(context: EngineContext): string[] {
       const h1 = prices.filter((price) => isFirstHalfTotal(price.market)).length;
       const props = prices.filter((price) => price.market.startsWith('player_')).length;
       return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: totals=${totals}, h1=${h1}, props=${props}`;
+    });
+}
+
+function tennisCoverage(context: EngineContext): string[] {
+  return context.fixtures
+    .filter((fixture) => fixture.sport === 'tennis')
+    .map((fixture) => {
+      const prices = context.prices.filter((price) => price.fixtureId === fixture.id);
+      const overGames = prices.filter((price) => price.market.startsWith('Over') && price.market.endsWith('Games')).length;
+      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: overGames=${overGames}`;
+    });
+}
+
+function mlbCoverage(context: EngineContext): string[] {
+  return context.fixtures
+    .filter((fixture) => fixture.sport === 'mlb')
+    .map((fixture) => {
+      const prices = context.prices.filter((price) => price.fixtureId === fixture.id);
+      const first5 = prices.filter((price) => price.market.startsWith('First 5 Innings')).length;
+      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: first5=${first5}`;
     });
 }
 

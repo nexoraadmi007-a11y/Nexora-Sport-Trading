@@ -115,6 +115,22 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
     };
   }
 
+  const tennisGames = rawMarket.match(/^(Over|Under) (\d+(?:\.\d+)?) Games$/i);
+  if (tennisGames) {
+    return {
+      market: 'ATP Hard Court Total Games',
+      selection: `${titleCase(tennisGames[1])} ${tennisGames[2]} Games`
+    };
+  }
+
+  const mlbFirst5 = rawMarket.match(/^First 5 Innings (Over|Under) (\d+(?:\.\d+)?)$/i);
+  if (mlbFirst5) {
+    return {
+      market: 'First 5 Innings Total',
+      selection: `${titleCase(mlbFirst5[1])} ${mlbFirst5[2]} Runs`
+    };
+  }
+
   return {
     market: rawMarket,
     selection
@@ -123,6 +139,8 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
 
 function fallbackCountry(signal: SignalCandidate): string | undefined {
   if (signal.sport === 'nba') return 'USA';
+  if (signal.sport === 'mlb') return 'USA';
+  if (signal.sport === 'tennis') return 'ATP Hard Court';
   const league = signal.fixture?.league.toLowerCase() || '';
   if (league.includes('premier league')) return 'England';
   if (league.includes('la liga')) return 'Spain';
@@ -134,16 +152,22 @@ function fallbackCountry(signal: SignalCandidate): string | undefined {
 
 function sportIconFor(sport: SignalCandidate['sport']): string {
   if (sport === 'nba') return '🏀';
+  if (sport === 'tennis') return '🎾';
+  if (sport === 'mlb') return '⚾';
   return '⚽';
 }
 
 function sportNameFor(sport: SignalCandidate['sport']): string {
   if (sport === 'nba') return 'NBA Basketball';
+  if (sport === 'tennis') return 'ATP Tennis';
+  if (sport === 'mlb') return 'MLB';
   return 'Football';
 }
 
 function unitFor(sport: SignalCandidate['sport']): string {
   if (sport === 'nba') return 'Points';
+  if (sport === 'tennis') return 'Games';
+  if (sport === 'mlb') return 'Runs';
   return 'Goals';
 }
 
