@@ -1,10 +1,5 @@
 import type { EngineContext, FixtureRef, MarketPrice } from '@nexora/types';
 
-const DEFAULT_TENNIS_HARDCOURT_KEYS = [
-  'tennis_atp_australian_open',
-  'tennis_atp_us_open'
-];
-
 interface OddsApiEvent {
   id: string;
   sport_key: string;
@@ -25,9 +20,15 @@ interface OddsApiEvent {
   }>;
 }
 
+interface OddsApiSport {
+  key: string;
+  title: string;
+  active: boolean;
+}
+
 export class TennisDataEngine {
   async loadContext(): Promise<EngineContext> {
-    const eventsBySport = await Promise.all(tennisSportKeys().map((sportKey) => this.fetchOdds(sportKey)));
+    const eventsBySport = await Promise.all((await this.tennisSportKeys()).map((sportKey) => this.fetchOdds(sportKey)));
     const events = eventsBySport.flat().filter(isConfirmedAtpHardCourtEvent);
 
     return {
@@ -36,6 +37,31 @@ export class TennisDataEngine {
       playerStats: [],
       now: new Date()
     };
+  }
+
+  private async tennisSportKeys(): Promise<string[]> {
+    const configured = process.env.TENNIS_HARDCOURT_SPORT_KEYS;
+    if (configured) return configured.split(',').map((key) => key.trim()).filter(Boolean);
+
+    const apiKey = process.env.ODDS_API_KEY;
+    if (!apiKey) return [];
+
+    try {
+      const response = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${apiKey}`);
+      if (!response.ok) {
+        console.warn(`[tennis-hardcourt-data] Could not discover sports: ${response.status} ${await response.text()}`);
+        return [];
+      }
+
+      const sports = await response.json() as OddsApiSport[];
+      return sports
+        .filter((sport) => sport.active)
+        .filter((sport) => isConfirmedAtpHardCourtLabel(`${sport.key} ${sport.title}`))
+        .map((sport) => sport.key);
+    } catch (error) {
+      console.warn(`[tennis-hardcourt-data] Sport discovery unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
   }
 
   private async fetchOdds(sportKey: string): Promise<OddsApiEvent[]> {
@@ -66,16 +92,12 @@ export class TennisDataEngine {
   }
 }
 
-function tennisSportKeys(): string[] {
-  const configured = process.env.TENNIS_HARDCOURT_SPORT_KEYS;
-  if (!configured) return DEFAULT_TENNIS_HARDCOURT_KEYS;
-
-  const keys = configured.split(',').map((key) => key.trim()).filter(Boolean);
-  return keys.length > 0 ? keys : DEFAULT_TENNIS_HARDCOURT_KEYS;
+function isConfirmedAtpHardCourtEvent(event: OddsApiEvent): boolean {
+  return isConfirmedAtpHardCourtLabel(`${event.sport_key} ${event.sport_title}`);
 }
 
-function isConfirmedAtpHardCourtEvent(event: OddsApiEvent): boolean {
-  const label = `${event.sport_key} ${event.sport_title}`.toLowerCase();
+function isConfirmedAtpHardCourtLabel(value: string): boolean {
+  const label = value.toLowerCase();
   if (!label.includes('atp')) return false;
   if (label.includes('wta')) return false;
   if (label.includes('clay') || label.includes('french')) return false;
