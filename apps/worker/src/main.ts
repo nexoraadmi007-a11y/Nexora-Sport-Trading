@@ -220,10 +220,12 @@ function startScheduler(): void {
     .map((time) => time.trim())
     .filter(Boolean);
   const scheduleGraceMinutes = Number(process.env.SCHEDULE_GRACE_MINUTES || 20);
+  const scheduleMaxRetries = Number(process.env.SCHEDULE_MAX_RETRIES || 2);
   let active = false;
   let lastRunKey = '';
+  const failedRunAttempts = new Map<string, number>();
 
-  console.log(`NEXORA scheduler active: ${scanTimes.join(', ')} WAT (grace ${scheduleGraceMinutes}m)`);
+  console.log(`NEXORA scheduler active: ${scanTimes.join(', ')} WAT (grace ${scheduleGraceMinutes}m, retries ${scheduleMaxRetries})`);
 
   const tick = async () => {
     const now = watParts(new Date());
@@ -238,14 +240,22 @@ function startScheduler(): void {
       return;
     }
 
+    const failedAttempts = failedRunAttempts.get(runKey) || 0;
+    if (failedAttempts >= scheduleMaxRetries) {
+      console.log(`SCHEDULER_SKIP_RETRY_LIMIT ${slot} WAT current=${now.time} WAT attempts=${failedAttempts}`);
+      return;
+    }
+
     active = true;
-    lastRunKey = runKey;
-    console.log(`SCHEDULER_TRIGGER ${slot} WAT current=${now.time} WAT`);
+    console.log(`SCHEDULER_TRIGGER ${slot} WAT current=${now.time} WAT attempt=${failedAttempts + 1}`);
 
     try {
       await runSignalBatch();
+      lastRunKey = runKey;
+      failedRunAttempts.delete(runKey);
       console.log(`SCHEDULER_DONE ${slot} WAT`);
     } catch (error) {
+      failedRunAttempts.set(runKey, failedAttempts + 1);
       console.error(`SCHEDULER_FAILED ${slot} WAT`, error);
       await notifySchedulerFailure(error);
     } finally {

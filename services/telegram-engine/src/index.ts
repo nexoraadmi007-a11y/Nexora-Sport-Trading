@@ -19,16 +19,44 @@ export class TelegramEngine {
       throw new Error('Telegram token/chat ID missing');
     }
 
-    const response = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: this.chatId, text })
-    });
+    const attempts = Number(process.env.TELEGRAM_DELIVERY_ATTEMPTS || 4);
+    const timeoutMs = Number(process.env.TELEGRAM_DELIVERY_TIMEOUT_MS || 20_000);
+    let lastError: unknown;
 
-    if (!response.ok) {
-      throw new Error(`Telegram delivery failed: ${response.status} ${await response.text()}`);
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: this.chatId, text }),
+          signal: controller.signal
+        });
+
+        if (response.ok) return;
+
+        lastError = new Error(`Telegram delivery failed: ${response.status} ${await response.text()}`);
+      } catch (error) {
+        lastError = error;
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (attempt < attempts) {
+        await delay(1_000 * attempt);
+      }
     }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 export function formatSignal(signal: SignalCandidate): string {
