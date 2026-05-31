@@ -94,16 +94,32 @@ export class TennisDataEngine {
 }
 
 function isConfirmedAtpHardCourtEvent(event: OddsApiEvent): boolean {
-  return isConfirmedAtpHardCourtLabel(`${event.sport_key} ${event.sport_title}`);
+  return isConfirmedAtpSurfaceLabel(`${event.sport_key} ${event.sport_title}`);
 }
 
 function isConfirmedAtpHardCourtLabel(value: string): boolean {
+  return isConfirmedAtpSurfaceLabel(value);
+}
+
+function isConfirmedAtpSurfaceLabel(value: string): boolean {
   const label = value.toLowerCase();
   if (!label.includes('atp')) return false;
   if (label.includes('wta')) return false;
-  if (label.includes('clay') || label.includes('french')) return false;
   if (label.includes('grass') || label.includes('wimbledon')) return false;
-  return label.includes('hard') || label.includes('australian') || label.includes('us open') || label.includes('indian wells') || label.includes('miami');
+
+  const allowed = new Set((process.env.TENNIS_ALLOWED_SURFACES || 'hard,clay')
+    .split(',')
+    .map((surface) => surface.trim().toLowerCase())
+    .filter(Boolean));
+
+  const isHard = label.includes('hard') ||
+    label.includes('australian') ||
+    label.includes('us open') ||
+    label.includes('indian wells') ||
+    label.includes('miami');
+  const isClay = label.includes('clay') || label.includes('french');
+
+  return (isHard && allowed.has('hard')) || (isClay && allowed.has('clay'));
 }
 
 function toFixture(event: OddsApiEvent): FixtureRef {
@@ -111,11 +127,17 @@ function toFixture(event: OddsApiEvent): FixtureRef {
     id: event.id,
     sport: 'tennis',
     league: event.sport_title,
-    country: 'ATP Hard Court',
+    country: tennisSurfaceLabel(`${event.sport_key} ${event.sport_title}`),
     homeTeam: event.home_team,
     awayTeam: event.away_team,
     startsAt: new Date(event.commence_time)
   };
+}
+
+function tennisSurfaceLabel(value: string): string {
+  const label = value.toLowerCase();
+  if (label.includes('clay') || label.includes('french')) return 'ATP Clay';
+  return 'ATP Hard Court';
 }
 
 function toMarketPrices(event: OddsApiEvent): MarketPrice[] {

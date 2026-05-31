@@ -24,7 +24,7 @@ interface OddsApiEvent {
 export class MlbDataEngine {
   async loadContext(): Promise<EngineContext> {
     const baseEvents = await this.fetchSportOdds();
-    const limit = Number(process.env.MLB_FIRST5_EVENT_LIMIT || 6);
+    const limit = Number(process.env.MLB_FIRST5_EVENT_LIMIT || 16);
     const enriched = await Promise.all(baseEvents.slice(0, limit).map((event) => this.fetchFirst5Odds(event)));
 
     return {

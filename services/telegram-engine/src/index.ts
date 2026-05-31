@@ -146,7 +146,7 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
   const tennisGames = rawMarket.match(/^(Over|Under) (\d+(?:\.\d+)?) Games$/i);
   if (tennisGames) {
     return {
-      market: 'ATP Hard Court Total Games',
+      market: 'ATP Total Games',
       selection: `${titleCase(tennisGames[1])} ${tennisGames[2]} Games`
     };
   }
@@ -168,7 +168,7 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
 function fallbackCountry(signal: SignalCandidate): string | undefined {
   if (signal.sport === 'nba') return 'USA';
   if (signal.sport === 'mlb') return 'USA';
-  if (signal.sport === 'tennis') return 'ATP Hard Court';
+  if (signal.sport === 'tennis') return 'ATP Tennis';
   const league = signal.fixture?.league.toLowerCase() || '';
   if (league.includes('premier league')) return 'England';
   if (league.includes('la liga')) return 'Spain';

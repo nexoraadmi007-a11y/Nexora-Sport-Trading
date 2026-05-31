@@ -68,7 +68,7 @@ async function runSignalBatch() {
     console.log(`NEXORA dry run: fixtures=${context.fixtures.length}, prices=${context.prices.length}`);
     console.log(`Football fixtures: ${footballFixtures.length} (${formatLeagueCounts(footballFixtures)})`);
     console.log(`NBA fixtures: ${nbaFixtures.length}`);
-    console.log(`ATP hard-court tennis fixtures: ${tennisFixtures.length} (${formatLeagueCounts(tennisFixtures)})`);
+    console.log(`ATP tennis fixtures: ${tennisFixtures.length} (${formatLeagueCounts(tennisFixtures)})`);
     console.log(`MLB fixtures: ${mlbFixtures.length} (${formatLeagueCounts(mlbFixtures)})`);
     console.log(`Over 1.5 prices: ${over15Prices.length}`);
     if (over15Prices.length > 0) {
@@ -85,7 +85,7 @@ async function runSignalBatch() {
     console.log(`NBA first-half totals prices: ${nbaH1Totals.length}`);
     console.log(`NBA player stats rows: ${context.playerStats.length}`);
     console.log(`NBA player prop prices: ${playerPropPrices.length}`);
-    console.log(`ATP hard-court Over Games prices: ${tennisOverGames.length}`);
+    console.log(`ATP Over Games prices: ${tennisOverGames.length}`);
     console.log(`MLB First 5 prices: ${mlbFirst5.length}`);
     const diagnostics = dataEngine.getDiagnostics();
     if (diagnostics) {
@@ -389,8 +389,8 @@ function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine
   }
 
   const tennisOverGames = context.prices.filter((price) => price.market.startsWith('Over') && price.market.endsWith('Games'));
-  if ((resultMap.get('ATP Hard Court Over Games') || 0) === 0) {
-    reasons.push(tennisOverGames.length === 0 ? 'ATP hard-court tennis: no confirmed hard-court Over Games markets' : `ATP hard-court tennis: ${tennisOverGames.length} markets failed competitiveness/dominance/EV filters`);
+  if ((resultMap.get('ATP Over Games') || 0) === 0) {
+    reasons.push(tennisOverGames.length === 0 ? 'ATP tennis: no confirmed Over Games markets on allowed surfaces' : `ATP tennis: ${tennisOverGames.length} markets failed competitiveness/dominance/EV filters`);
   }
 
   const mlbFirst5 = context.prices.filter((price) => price.market.startsWith('First 5 Innings'));

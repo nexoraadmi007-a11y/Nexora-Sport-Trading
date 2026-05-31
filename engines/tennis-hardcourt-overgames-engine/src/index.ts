@@ -8,7 +8,7 @@ const MIN_EV = 0.03;
 const MIN_QUALITY = 74;
 
 export class TennisHardcourtOverGamesEngine implements MarketEngine {
-  name = 'ATP Hard Court Over Games';
+  name = 'ATP Over Games';
   sport = 'tennis' as const;
 
   async generate(context: EngineContext): Promise<SignalCandidate[]> {
