@@ -75,15 +75,16 @@ export class DataEngine {
     if (!apiKey) throw new Error('ODDS_API_KEY missing');
 
     const markets = sportKey === 'basketball_nba' ? 'h2h,totals' : 'h2h,totals';
+    const source = oddsSourceParams('uk,eu,us');
     const params = new URLSearchParams({
       apiKey,
-      regions: 'uk,eu,us',
+      ...source.params,
       markets,
       oddsFormat: 'decimal',
       dateFormat: 'iso'
     });
 
-    const cacheKey = `odds-api:sport:${sportKey}:regions:uk,eu,us:markets:${markets}`;
+    const cacheKey = `odds-api:sport:${sportKey}:${source.cacheKey}:markets:${markets}`;
     const cached = await this.cache.get<OddsApiEvent[]>(cacheKey);
     if (cached) return cached;
 
@@ -128,7 +129,8 @@ export class DataEngine {
     if (!this.shouldFetchAdditionalMarket(event.id, counterKey)) return event;
 
     const regions = additionalMarketRegions(event.sport_key, counterKey);
-    const cacheKey = `odds-api:event:${event.sport_key}:${event.id}:regions:${regions}:markets:${markets}`;
+    const source = oddsSourceParams(regions);
+    const cacheKey = `odds-api:event:${event.sport_key}:${event.id}:${source.cacheKey}:markets:${markets}`;
     const cached = await this.cache.get<OddsApiEvent>(cacheKey);
     if (cached) return mergeBookmakerMarkets(event, cached);
 
@@ -142,7 +144,7 @@ export class DataEngine {
     try {
       const params = new URLSearchParams({
         apiKey: process.env.ODDS_API_KEY || '',
-        regions,
+        ...source.params,
         markets,
         oddsFormat: 'decimal',
         dateFormat: 'iso'
@@ -369,6 +371,21 @@ function configuredSportKeys(envName: string, fallback: string[]): string[] {
     .filter(Boolean);
 
   return keys.length > 0 ? keys : fallback;
+}
+
+function oddsSourceParams(defaultRegions: string): { params: Record<string, string>; cacheKey: string } {
+  const bookmakerKeys = (process.env.PREFERRED_BOOKMAKER_KEYS || process.env.ODDS_API_BOOKMAKERS || 'onexbet').trim();
+  if (bookmakerKeys && bookmakerKeys.toLowerCase() !== 'none') {
+    return {
+      params: { bookmakers: bookmakerKeys },
+      cacheKey: `bookmakers:${bookmakerKeys}`
+    };
+  }
+
+  return {
+    params: { regions: defaultRegions },
+    cacheKey: `regions:${defaultRegions}`
+  };
 }
 
 function additionalMarketRegions(sportKey: string, namespace: string): string {

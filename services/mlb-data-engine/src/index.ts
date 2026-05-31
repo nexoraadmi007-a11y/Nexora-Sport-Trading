@@ -40,9 +40,10 @@ export class MlbDataEngine {
     if (!apiKey) return [];
 
     const sportKey = process.env.MLB_SPORT_KEY || 'baseball_mlb';
+    const source = oddsSourceParams(process.env.MLB_ODDS_REGIONS || 'us,eu');
     const params = new URLSearchParams({
       apiKey,
-      regions: process.env.MLB_ODDS_REGIONS || 'us,eu',
+      ...source.params,
       markets: 'h2h',
       oddsFormat: 'decimal',
       dateFormat: 'iso'
@@ -65,9 +66,10 @@ export class MlbDataEngine {
     const apiKey = process.env.ODDS_API_KEY;
     if (!apiKey) return event;
 
+    const source = oddsSourceParams(process.env.MLB_ODDS_REGIONS || 'us,eu');
     const params = new URLSearchParams({
       apiKey,
-      regions: process.env.MLB_ODDS_REGIONS || 'us,eu',
+      ...source.params,
       markets: 'totals_1st_5_innings',
       oddsFormat: 'decimal',
       dateFormat: 'iso'
@@ -149,6 +151,15 @@ function isPreferredBookmaker(bookmaker: string): boolean {
     .filter(Boolean);
   const normalized = normalizeBookmaker(bookmaker);
   return preferred.length === 0 || preferred.some((item) => normalized.includes(item));
+}
+
+function oddsSourceParams(defaultRegions: string): { params: Record<string, string> } {
+  const bookmakerKeys = (process.env.PREFERRED_BOOKMAKER_KEYS || process.env.ODDS_API_BOOKMAKERS || 'onexbet').trim();
+  if (bookmakerKeys && bookmakerKeys.toLowerCase() !== 'none') {
+    return { params: { bookmakers: bookmakerKeys } };
+  }
+
+  return { params: { regions: defaultRegions } };
 }
 
 function normalizeBookmaker(bookmaker: string): string {

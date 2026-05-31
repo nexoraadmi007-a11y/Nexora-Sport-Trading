@@ -70,9 +70,10 @@ export class TennisDataEngine {
 
     const markets = 'totals';
     const regions = process.env.TENNIS_ODDS_REGIONS || 'uk,eu,us';
+    const source = oddsSourceParams(regions);
     const params = new URLSearchParams({
       apiKey,
-      regions,
+      ...source.params,
       markets,
       oddsFormat: 'decimal',
       dateFormat: 'iso'
@@ -148,6 +149,15 @@ function isPreferredBookmaker(bookmaker: string): boolean {
     .filter(Boolean);
   const normalized = normalizeBookmaker(bookmaker);
   return preferred.length === 0 || preferred.some((item) => normalized.includes(item));
+}
+
+function oddsSourceParams(defaultRegions: string): { params: Record<string, string> } {
+  const bookmakerKeys = (process.env.PREFERRED_BOOKMAKER_KEYS || process.env.ODDS_API_BOOKMAKERS || 'onexbet').trim();
+  if (bookmakerKeys && bookmakerKeys.toLowerCase() !== 'none') {
+    return { params: { bookmakers: bookmakerKeys } };
+  }
+
+  return { params: { regions: defaultRegions } };
 }
 
 function normalizeBookmaker(bookmaker: string): string {
