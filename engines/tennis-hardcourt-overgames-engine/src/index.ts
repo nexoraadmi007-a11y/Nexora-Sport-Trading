@@ -2,6 +2,8 @@ import type { EngineContext, MarketEngine, SignalCandidate } from '@nexora/types
 
 const MIN_LINE = 21.5;
 const MAX_LINE = 24.5;
+const BEST_OF_FIVE_MIN_LINE = 28.5;
+const BEST_OF_FIVE_MAX_LINE = 44.5;
 const MIN_ODDS = 1.65;
 const MAX_ODDS = 2.1;
 const MIN_EV = 0.03;
@@ -17,6 +19,7 @@ export class TennisHardcourtOverGamesEngine implements MarketEngine {
 
     for (const fixture of fixtures) {
       if (!isAllowedSurface(fixture.league, fixture.country)) continue;
+      const bestOfFive = isBestOfFiveEvent(fixture.league);
       const overPrices = context.prices.filter((price) =>
         price.fixtureId === fixture.id &&
         /^Over \d+(\.\d+)? Games$/.test(price.market) &&
@@ -26,11 +29,11 @@ export class TennisHardcourtOverGamesEngine implements MarketEngine {
 
       for (const price of overPrices) {
         const line = extractLine(price.market);
-        if (!line || line < MIN_LINE || line > MAX_LINE) continue;
+        if (!line || !isAllowedLine(line, bestOfFive)) continue;
 
-        const competitiveness = competitivenessScore(price.odds, line);
-        const dominanceRisk = dominanceRiskScore(price.odds, line);
-        const tieBreakProfile = tieBreakProbability(line, price.odds);
+        const competitiveness = competitivenessScore(price.odds, line, bestOfFive);
+        const dominanceRisk = dominanceRiskScore(price.odds, line, bestOfFive);
+        const tieBreakProfile = matchLengthProfile(line, price.odds, bestOfFive);
         const fatigueConfidence = fatigueConfidenceScore(fixture.startsAt, context.now);
 
         if (competitiveness < 0.72) continue;
@@ -60,9 +63,10 @@ export class TennisHardcourtOverGamesEngine implements MarketEngine {
           tier: tierFor(qualityScore, ev),
           reason: [
             'ATP over-games validation',
+            bestOfFive ? 'best-of-five calibration' : 'best-of-three calibration',
             `competitiveness ${(competitiveness * 100).toFixed(0)}%`,
             `dominance risk ${(dominanceRisk * 100).toFixed(0)}%`,
-            `tie-break profile ${(tieBreakProfile * 100).toFixed(0)}%`,
+            `match-length profile ${(tieBreakProfile * 100).toFixed(0)}%`,
             'validation mode'
           ].join(' + ')
         });
@@ -97,19 +101,40 @@ function extractLine(market: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-function competitivenessScore(odds: number, line: number): number {
+function isBestOfFiveEvent(league: string): boolean {
+  const label = league.toLowerCase();
+  return label.includes('french open') ||
+    label.includes('australian open') ||
+    label.includes('us open') ||
+    label.includes('wimbledon');
+}
+
+function isAllowedLine(line: number, bestOfFive: boolean): boolean {
+  if (bestOfFive) return line >= BEST_OF_FIVE_MIN_LINE && line <= BEST_OF_FIVE_MAX_LINE;
+  return line >= MIN_LINE && line <= MAX_LINE;
+}
+
+function competitivenessScore(odds: number, line: number, bestOfFive: boolean): number {
   const oddsBalance = 1 - Math.abs(odds - 1.86) / 0.55;
-  const lineBalance = 1 - Math.abs(line - 22.5) / 4;
+  const lineCenter = bestOfFive ? 36.5 : 22.5;
+  const lineSpread = bestOfFive ? 12 : 4;
+  const lineBalance = 1 - Math.abs(line - lineCenter) / lineSpread;
   return clamp(oddsBalance * 0.6 + lineBalance * 0.4, 0, 1);
 }
 
-function dominanceRiskScore(odds: number, line: number): number {
-  const lowLineRisk = line < 21.5 ? 0.35 : 0;
+function dominanceRiskScore(odds: number, line: number, bestOfFive: boolean): number {
+  const lowLineRisk = bestOfFive
+    ? line < 31.5 ? 0.28 : 0
+    : line < 21.5 ? 0.35 : 0;
   const priceRisk = odds < 1.68 ? 0.22 : odds > 2.08 ? 0.16 : 0.08;
   return clamp(lowLineRisk + priceRisk, 0, 1);
 }
 
-function tieBreakProbability(line: number, odds: number): number {
+function matchLengthProfile(line: number, odds: number, bestOfFive: boolean): number {
+  if (bestOfFive) {
+    return clamp(0.46 + (line - 32.5) * 0.022 + (odds >= 1.75 && odds <= 2.02 ? 0.08 : 0), 0, 1);
+  }
+
   return clamp(0.46 + (line - 21.5) * 0.045 + (odds >= 1.75 && odds <= 2.02 ? 0.08 : 0), 0, 1);
 }
 
