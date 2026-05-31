@@ -56,7 +56,7 @@ async function runSignalBatch() {
     const h2hPrices = context.prices.filter((price) => price.market === 'Double Chance Candidate');
     const nbaTotals = context.prices.filter((price) =>
       context.fixtures.some((fixture) => fixture.id === price.fixtureId && fixture.sport === 'nba') &&
-      (/^Over \d+(\.\d+)?$/.test(price.market) || /^Under \d+(\.\d+)?$/.test(price.market))
+      (isGameTotal(price.market) || isNbaTeamTotal(price.market))
     );
     const nbaH1Totals = context.prices.filter((price) =>
       context.fixtures.some((fixture) => fixture.id === price.fixtureId && fixture.sport === 'nba') &&
@@ -81,7 +81,7 @@ async function runSignalBatch() {
       console.log(`BTTS Yes odds range: ${odds[0]}-${odds[odds.length - 1]}`);
     }
     console.log(`H2H prices for Double Chance modeling: ${h2hPrices.length}`);
-    console.log(`NBA totals prices: ${nbaTotals.length}`);
+    console.log(`NBA total prices: ${nbaTotals.length}`);
     console.log(`NBA first-half totals prices: ${nbaH1Totals.length}`);
     console.log(`NBA player stats rows: ${context.playerStats.length}`);
     console.log(`NBA player prop prices: ${playerPropPrices.length}`);
@@ -373,9 +373,9 @@ function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine
     reasons.push(completeDoubleChance.length === 0 ? 'Double Chance: no complete preferred-bookmaker home/draw/away set' : `Double Chance: ${completeDoubleChance.length} complete sets failed EV/quality filters`);
   }
 
-  const nbaTotals = context.prices.filter((price) => isNbaFixturePrice(context, price) && isGameTotal(price.market));
+  const nbaTotals = context.prices.filter((price) => isNbaFixturePrice(context, price) && (isGameTotal(price.market) || isNbaTeamTotal(price.market)));
   if ((resultMap.get('Team Totals') || 0) === 0) {
-    reasons.push(nbaTotals.length === 0 ? 'NBA totals: no preferred-bookmaker game-total markets' : `NBA totals: ${nbaTotals.length} markets failed EV/quality filters`);
+    reasons.push(nbaTotals.length === 0 ? 'NBA totals: no preferred-bookmaker game/team-total markets' : `NBA totals: ${nbaTotals.length} markets failed EV/quality filters`);
   }
 
   const nbaH1 = context.prices.filter((price) => isNbaFixturePrice(context, price) && isFirstHalfTotal(price.market));
@@ -419,9 +419,10 @@ function nbaCoverage(context: EngineContext): string[] {
     .map((fixture) => {
       const prices = context.prices.filter((price) => price.fixtureId === fixture.id);
       const totals = prices.filter((price) => isGameTotal(price.market)).length;
+      const teamTotals = prices.filter((price) => isNbaTeamTotal(price.market)).length;
       const h1 = prices.filter((price) => isFirstHalfTotal(price.market)).length;
       const props = prices.filter((price) => price.market.startsWith('player_')).length;
-      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: totals=${totals}, h1=${h1}, props=${props}`;
+      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: totals=${totals}, teamTotals=${teamTotals}, h1=${h1}, props=${props}`;
     });
 }
 
@@ -457,6 +458,10 @@ function isNbaFixturePrice(context: EngineContext, price: MarketPrice): boolean 
 
 function isGameTotal(market: string): boolean {
   return /^Over \d+(\.\d+)?$/.test(market) || /^Under \d+(\.\d+)?$/.test(market);
+}
+
+function isNbaTeamTotal(market: string): boolean {
+  return /^Team Total .+ (Over|Under) \d+(\.\d+)?$/.test(market);
 }
 
 function isFirstHalfTotal(market: string): boolean {

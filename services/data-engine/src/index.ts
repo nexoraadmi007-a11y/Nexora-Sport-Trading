@@ -118,7 +118,8 @@ export class DataEngine {
   private async enrichAdditionalMarkets(event: OddsApiEvent): Promise<OddsApiEvent> {
     if (!isInsideAdditionalMarketWindow(event.commence_time)) return event;
     if (event.sport_key === 'basketball_nba') {
-      const withFirstHalf = await this.enrichEventMarkets(event, 'totals_h1', 'nbaFirstHalf');
+      const withTeamTotals = await this.enrichEventMarkets(event, 'team_totals,alternate_team_totals', 'nbaTeamTotals');
+      const withFirstHalf = await this.enrichEventMarkets(withTeamTotals, 'totals_h1', 'nbaFirstHalf');
       return this.enrichEventMarkets(withFirstHalf, 'player_points,player_rebounds,player_assists,player_threes', 'nbaPlayerProps');
     }
     if (!event.sport_key.startsWith('soccer_')) return event;
@@ -205,6 +206,8 @@ export class DataEngine {
     const limit = Number(
       namespace === 'nbaFirstHalf'
         ? Math.max(Number(process.env.NBA_H1_EVENT_LIMIT || 0), 6)
+        : namespace === 'nbaTeamTotals'
+          ? Math.max(Number(process.env.NBA_TEAM_TOTALS_EVENT_LIMIT || 0), 6)
         : namespace === 'nbaPlayerProps'
           ? Math.max(Number(process.env.NBA_PLAYER_PROPS_EVENT_LIMIT || 0), 6)
           : Math.max(Number(process.env.BTTS_EVENT_LIMIT || 0), 6)
@@ -421,12 +424,13 @@ function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
 }
 
 function normalizeSelection(marketKey: string, outcome: { name: string; description?: string }): string {
-  if (marketKey.startsWith('player_')) return outcome.description || outcome.name;
+  if (marketKey.startsWith('player_') || marketKey.includes('team_totals')) return outcome.description || outcome.name;
   return outcome.name;
 }
 
 function normalizeMarket(marketKey: string, outcome: { name: string; description?: string; point?: number }): string {
   if (marketKey.startsWith('player_')) return `${marketKey} ${outcome.name} ${outcome.point ?? ''}`.trim();
+  if (marketKey.includes('team_totals')) return `Team Total ${outcome.description || 'Team'} ${outcome.name} ${outcome.point ?? ''}`.trim();
   if (marketKey === 'totals_h1') return `${outcome.name} ${outcome.point ?? ''} H1`.trim();
   if (marketKey === 'totals') return `${outcome.name} ${outcome.point ?? ''}`.trim();
   if (marketKey === 'btts') return `BTTS ${outcome.name}`;

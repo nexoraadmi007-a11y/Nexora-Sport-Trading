@@ -17,19 +17,20 @@ export class NbaTeamTotalsEngine implements MarketEngine {
     for (const fixture of nbaFixtures) {
       const totalPrices = context.prices.filter((price) =>
         price.fixtureId === fixture.id &&
-        isGameTotal(price.market) &&
+        (isTeamTotal(price.market) || isGameTotal(price.market)) &&
         price.odds >= MIN_ODDS &&
         price.odds <= MAX_ODDS
       );
       if (totalPrices.length < 1) continue;
 
       for (const side of ['Over', 'Under'] as const) {
-        const sidePrices = totalPrices.filter((price) => price.market.startsWith(side));
+        const sidePrices = totalPrices.filter((price) => price.market.includes(` ${side} `) || price.market.startsWith(side));
         if (sidePrices.length < 1) continue;
 
         const best = sidePrices.sort((a, b) => b.odds - a.odds)[0];
         const point = extractPoint(best.market);
         if (!point) continue;
+        const team = extractTeam(best.market);
 
         const consensusProbability = impliedConsensusProbability(sidePrices);
         const stability = priceStability(sidePrices);
@@ -46,8 +47,8 @@ export class NbaTeamTotalsEngine implements MarketEngine {
           engine: this.name,
           fixture,
           bookmaker: best.bookmaker,
-          market: `Game Total Proxy ${side} ${point}`,
-          selection: `${side} ${point}`,
+          market: team ? `Team Total ${team} ${side} ${point}` : `Game Total Proxy ${side} ${point}`,
+          selection: team ? `${team} ${side} ${point}` : `${side} ${point}`,
           odds: best.odds,
           trueProbability,
           ev,
@@ -63,6 +64,10 @@ export class NbaTeamTotalsEngine implements MarketEngine {
   }
 }
 
+function isTeamTotal(market: string): boolean {
+  return /^Team Total .+ (Over|Under) \d+(\.\d+)?$/.test(market);
+}
+
 function isGameTotal(market: string): boolean {
   return /^Over \d+(\.\d+)?$/.test(market) || /^Under \d+(\.\d+)?$/.test(market);
 }
@@ -70,6 +75,11 @@ function isGameTotal(market: string): boolean {
 function extractPoint(market: string): number | null {
   const match = market.match(/(?:Over|Under)\s+(\d+(?:\.\d+)?)/);
   return match ? Number(match[1]) : null;
+}
+
+function extractTeam(market: string): string | null {
+  const match = market.match(/^Team Total (.+) (?:Over|Under) \d+(?:\.\d+)?$/);
+  return match ? match[1] : null;
 }
 
 function impliedConsensusProbability(prices: Array<{ odds: number }>): number {

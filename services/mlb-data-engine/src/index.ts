@@ -70,7 +70,7 @@ export class MlbDataEngine {
     const params = new URLSearchParams({
       apiKey,
       ...source.params,
-      markets: 'totals_1st_5_innings',
+      markets: 'totals_1st_5_innings,alternate_totals_1st_5_innings',
       oddsFormat: 'decimal',
       dateFormat: 'iso'
     });
@@ -126,7 +126,7 @@ function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
   for (const bookmaker of event.bookmakers || []) {
     if (!isPreferredBookmaker(bookmaker.title)) continue;
     for (const market of bookmaker.markets || []) {
-      if (market.key !== 'totals_1st_5_innings') continue;
+      if (!isFirst5TotalMarket(market.key)) continue;
       for (const outcome of market.outcomes || []) {
         if (outcome.point === undefined) continue;
         prices.push({
@@ -142,6 +142,10 @@ function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
   }
 
   return prices;
+}
+
+function isFirst5TotalMarket(marketKey: string): boolean {
+  return marketKey === 'totals_1st_5_innings' || marketKey === 'alternate_totals_1st_5_innings';
 }
 
 function isPreferredBookmaker(bookmaker: string): boolean {
