@@ -16,7 +16,7 @@ export class TennisHardcourtOverGamesEngine implements MarketEngine {
     const candidates: SignalCandidate[] = [];
 
     for (const fixture of fixtures) {
-      if (!isHardCourt(fixture.league, fixture.country)) continue;
+      if (!isAllowedSurface(fixture.league, fixture.country)) continue;
       const overPrices = context.prices.filter((price) =>
         price.fixtureId === fixture.id &&
         /^Over \d+(\.\d+)? Games$/.test(price.market) &&
@@ -59,7 +59,7 @@ export class TennisHardcourtOverGamesEngine implements MarketEngine {
           qualityScore,
           tier: tierFor(qualityScore, ev),
           reason: [
-            'ATP hard-court over-games validation',
+            'ATP over-games validation',
             `competitiveness ${(competitiveness * 100).toFixed(0)}%`,
             `dominance risk ${(dominanceRisk * 100).toFixed(0)}%`,
             `tie-break profile ${(tieBreakProfile * 100).toFixed(0)}%`,
@@ -73,11 +73,23 @@ export class TennisHardcourtOverGamesEngine implements MarketEngine {
   }
 }
 
-function isHardCourt(league: string, country?: string): boolean {
+function isAllowedSurface(league: string, country?: string): boolean {
   const label = `${league} ${country || ''}`.toLowerCase();
-  if (label.includes('clay') || label.includes('french')) return false;
   if (label.includes('grass') || label.includes('wimbledon')) return false;
-  return label.includes('hard') || label.includes('australian') || label.includes('us open') || label.includes('indian wells') || label.includes('miami');
+
+  const allowed = new Set((process.env.TENNIS_ALLOWED_SURFACES || 'hard,clay')
+    .split(',')
+    .map((surface) => surface.trim().toLowerCase())
+    .filter(Boolean));
+
+  const isHard = label.includes('hard') ||
+    label.includes('australian') ||
+    label.includes('us open') ||
+    label.includes('indian wells') ||
+    label.includes('miami');
+  const isClay = label.includes('clay') || label.includes('french');
+
+  return (isHard && allowed.has('hard')) || (isClay && allowed.has('clay'));
 }
 
 function extractLine(market: string): number | null {
