@@ -16,23 +16,13 @@ import { TennisHardcourtOverGamesEngine } from '@nexora/tennis-hardcourt-overgam
 import { TelegramEngine } from '@nexora/telegram-engine';
 import type { EngineContext, MarketEngine, MarketPrice, SignalCandidate } from '@nexora/types';
 
-const engines: MarketEngine[] = [
-  new FootballOver15Engine(),
-  new FootballBttsEngine(),
-  new FootballDoubleChanceEngine(),
-  new NbaPlayerPropsEngine(),
-  new NbaTeamTotalsEngine(),
-  new NbaFirstHalfEngine(),
-  new TennisHardcourtOverGamesEngine(),
-  new MlbFirst5Engine()
-];
-
 async function runSignalBatch() {
   loadDotEnv();
   if (process.env.NODE_ENV === 'production') {
     validateRequiredEnv();
   }
 
+  const engines = buildEngines();
   const dataEngine = new DataEngine();
   const signalEngine = new SignalEngine();
   const riskEngine = new RiskEngine();
@@ -86,6 +76,7 @@ async function runSignalBatch() {
     console.log(`NBA player stats rows: ${context.playerStats.length}`);
     console.log(`NBA player prop prices: ${playerPropPrices.length}`);
     console.log(`ATP Over Games prices: ${tennisOverGames.length}`);
+    console.log(`ATP signal delivery: ${process.env.ENABLE_TENNIS_SIGNALS === 'true' ? 'enabled' : 'validation-only/disabled'}`);
     console.log(`MLB First 5 prices: ${mlbFirst5.length}`);
     const diagnostics = dataEngine.getDiagnostics();
     if (diagnostics) {
@@ -194,10 +185,24 @@ async function runSignalBatch() {
   await persistence.disconnect();
 }
 
+function buildEngines(): MarketEngine[] {
+  return [
+    new FootballOver15Engine(),
+    new FootballBttsEngine(),
+    new FootballDoubleChanceEngine(),
+    new NbaPlayerPropsEngine(),
+    new NbaTeamTotalsEngine(),
+    new NbaFirstHalfEngine(),
+    ...(process.env.ENABLE_TENNIS_SIGNALS === 'true' ? [new TennisHardcourtOverGamesEngine()] : []),
+    new MlbFirst5Engine()
+  ];
+}
+
 async function loadSpecializedContext(dataEngine: DataEngine): Promise<EngineContext> {
+  const tennisEnabled = process.env.ENABLE_TENNIS_SIGNALS === 'true' || process.env.ENABLE_TENNIS_VALIDATION === 'true';
   const [core, tennis, mlb] = await Promise.all([
     dataEngine.loadContext(),
-    new TennisDataEngine().loadContext(),
+    tennisEnabled ? new TennisDataEngine().loadContext() : emptyContext(),
     new MlbDataEngine().loadContext()
   ]);
 
@@ -206,6 +211,15 @@ async function loadSpecializedContext(dataEngine: DataEngine): Promise<EngineCon
     prices: [...core.prices, ...tennis.prices, ...mlb.prices],
     playerStats: [...core.playerStats, ...tennis.playerStats, ...mlb.playerStats],
     now: core.now
+  };
+}
+
+function emptyContext(): EngineContext {
+  return {
+    fixtures: [],
+    prices: [],
+    playerStats: [],
+    now: new Date()
   };
 }
 
@@ -389,7 +403,9 @@ function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine
   }
 
   const tennisOverGames = context.prices.filter((price) => price.market.startsWith('Over') && price.market.endsWith('Games'));
-  if ((resultMap.get('ATP Over Games') || 0) === 0) {
+  if (process.env.ENABLE_TENNIS_SIGNALS !== 'true') {
+    reasons.push('ATP tennis: validation-only/disabled after loss audit');
+  } else if ((resultMap.get('ATP Over Games') || 0) === 0) {
     reasons.push(tennisOverGames.length === 0 ? 'ATP tennis: no confirmed Over Games markets on allowed surfaces' : `ATP tennis: ${tennisOverGames.length} markets failed competitiveness/dominance/EV filters`);
   }
 

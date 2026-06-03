@@ -174,32 +174,39 @@ export class DataEngine {
     const key = process.env.SPORTSDATAIO_NBA_API_KEY;
     if (!key) return [];
 
-    const date = sportsDataIoDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
-    const cacheKey = `sportsdataio:nba:player-stats:${date}`;
-    const cached = await this.cache.get<PlayerStatRef[]>(cacheKey);
-    if (cached) return cached.map(revivePlayerStat);
+    const lookbackDays = Number(process.env.NBA_PLAYER_STATS_LOOKBACK_DAYS || 14);
+    for (let offset = 1; offset <= lookbackDays; offset += 1) {
+      const date = sportsDataIoDate(new Date(Date.now() - offset * 24 * 60 * 60 * 1000));
+      const cacheKey = `sportsdataio:nba:player-stats:${date}`;
+      const cached = await this.cache.get<PlayerStatRef[]>(cacheKey);
+      if (cached && cached.length > 0) return cached.map(revivePlayerStat);
 
-    const endpoint = `nba/player-game-stats-final/${date}`;
-    if (!await this.quota.reserveCall('sportsdataio', endpoint, 'normal')) {
-      const stale = await this.cache.getStale<PlayerStatRef[]>(cacheKey, hours(72));
-      return stale ? stale.map(revivePlayerStat) : [];
-    }
-
-    try {
-      const response = await fetchWithRetry(`https://api.sportsdata.io/v3/nba/stats/json/PlayerGameStatsByDateFinal/${date}?key=${key}`);
-      if (!response.ok) {
-        const stale = await this.cache.getStale<PlayerStatRef[]>(cacheKey, hours(72));
-        return stale ? stale.map(revivePlayerStat) : [];
+      const endpoint = `nba/player-game-stats-final/${date}`;
+      if (!await this.quota.reserveCall('sportsdataio', endpoint, offset <= 3 ? 'normal' : 'low')) {
+        const stale = await this.cache.getStale<PlayerStatRef[]>(cacheKey, hours(168));
+        if (stale && stale.length > 0) return stale.map(revivePlayerStat);
+        continue;
       }
 
-      const rows = await response.json() as Array<Record<string, unknown>>;
-      const stats = rows.map(toPlayerStat).filter((stat): stat is PlayerStatRef => Boolean(stat));
-      await this.cache.set(cacheKey, stats, hours(Number(process.env.SPORTSDATAIO_PLAYER_STATS_TTL_HOURS || 18)));
-      return stats;
-    } catch {
-      const stale = await this.cache.getStale<PlayerStatRef[]>(cacheKey, hours(72));
-      return stale ? stale.map(revivePlayerStat) : [];
+      try {
+        const response = await fetchWithRetry(`https://api.sportsdata.io/v3/nba/stats/json/PlayerGameStatsByDateFinal/${date}?key=${key}`);
+        if (!response.ok) {
+          const stale = await this.cache.getStale<PlayerStatRef[]>(cacheKey, hours(168));
+          if (stale && stale.length > 0) return stale.map(revivePlayerStat);
+          continue;
+        }
+
+        const rows = await response.json() as Array<Record<string, unknown>>;
+        const stats = rows.map(toPlayerStat).filter((stat): stat is PlayerStatRef => Boolean(stat));
+        await this.cache.set(cacheKey, stats, hours(Number(process.env.SPORTSDATAIO_PLAYER_STATS_TTL_HOURS || 18)));
+        if (stats.length > 0) return stats;
+      } catch {
+        const stale = await this.cache.getStale<PlayerStatRef[]>(cacheKey, hours(168));
+        if (stale && stale.length > 0) return stale.map(revivePlayerStat);
+      }
     }
+
+    return [];
   }
 
   private shouldFetchAdditionalMarket(eventId: string, namespace: string): boolean {
