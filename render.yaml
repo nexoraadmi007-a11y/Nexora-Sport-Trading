@@ -67,6 +67,20 @@ services:
         sync: false
       - key: SPORTSDATAIO_NBA_API_KEY
         sync: false
+      - key: SHARPAPI_API_KEY
+        sync: false
+      - key: SHARPAPI_BASE_URL
+        value: "https://api.sharpapi.io/api/v1"
+      - key: SHARPAPI_SPORTSBOOKS
+        value: "onexbet"
+      - key: SHARPAPI_NBA_MARKETS
+        value: "all"
+      - key: SHARPAPI_MLB_MARKETS
+        value: "all"
+      - key: SHARPAPI_LIMIT
+        value: "200"
+      - key: SHARPAPI_TIMEOUT_MS
+        value: "12000"
       - key: GOOGLE_SHEETS_WEBHOOK_URL
         sync: false
       - key: SUPABASE_URL

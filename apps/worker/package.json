@@ -26,6 +26,7 @@
     "@nexora/nba-teamtotals-engine": "0.1.0",
     "@nexora/persistence-engine": "0.1.0",
     "@nexora/risk-engine": "0.1.0",
+    "@nexora/sharpapi-data-engine": "0.1.0",
     "@nexora/shared": "0.1.0",
     "@nexora/signal-engine": "0.1.0",
     "@nexora/tennis-data-engine": "0.1.0",

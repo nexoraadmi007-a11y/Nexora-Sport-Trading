@@ -9,6 +9,7 @@ import { NbaPlayerPropsEngine } from '@nexora/nba-playerprops-engine';
 import { NbaTeamTotalsEngine } from '@nexora/nba-teamtotals-engine';
 import { PersistenceEngine } from '@nexora/persistence-engine';
 import { RiskEngine } from '@nexora/risk-engine';
+import { SharpApiDataEngine } from '@nexora/sharpapi-data-engine';
 import { loadDotEnv, validateRequiredEnv } from '@nexora/shared';
 import { SignalEngine, type SignalAuditResult } from '@nexora/signal-engine';
 import { TennisDataEngine } from '@nexora/tennis-data-engine';
@@ -78,6 +79,7 @@ async function runSignalBatch() {
     console.log(`ATP Over Games prices: ${tennisOverGames.length}`);
     console.log(`ATP signal delivery: ${process.env.ENABLE_TENNIS_SIGNALS === 'true' ? 'enabled' : 'validation-only/disabled'}`);
     console.log(`MLB First 5 prices: ${mlbFirst5.length}`);
+    console.log(`Deep NBA/MLB odds feed: ${process.env.SHARPAPI_API_KEY ? `configured (${process.env.SHARPAPI_SPORTSBOOKS || 'onexbet'})` : 'not configured'}`);
     const diagnostics = dataEngine.getDiagnostics();
     if (diagnostics) {
       console.log(`Cache: hits=${diagnostics.cache.hits}, misses=${diagnostics.cache.misses}, stale=${diagnostics.cache.staleHits}, writes=${diagnostics.cache.writes}`);
@@ -200,16 +202,17 @@ function buildEngines(): MarketEngine[] {
 
 async function loadSpecializedContext(dataEngine: DataEngine): Promise<EngineContext> {
   const tennisEnabled = process.env.ENABLE_TENNIS_SIGNALS === 'true' || process.env.ENABLE_TENNIS_VALIDATION === 'true';
-  const [core, tennis, mlb] = await Promise.all([
+  const [core, tennis, mlb, sharp] = await Promise.all([
     dataEngine.loadContext(),
     tennisEnabled ? new TennisDataEngine().loadContext() : emptyContext(),
-    new MlbDataEngine().loadContext()
+    new MlbDataEngine().loadContext(),
+    new SharpApiDataEngine().loadContext()
   ]);
 
   return {
-    fixtures: [...core.fixtures, ...tennis.fixtures, ...mlb.fixtures],
-    prices: [...core.prices, ...tennis.prices, ...mlb.prices],
-    playerStats: [...core.playerStats, ...tennis.playerStats, ...mlb.playerStats],
+    fixtures: dedupeFixtures([...core.fixtures, ...tennis.fixtures, ...mlb.fixtures, ...sharp.fixtures]),
+    prices: dedupePrices([...core.prices, ...tennis.prices, ...mlb.prices, ...sharp.prices]),
+    playerStats: [...core.playerStats, ...tennis.playerStats, ...mlb.playerStats, ...sharp.playerStats],
     now: core.now
   };
 }
@@ -221,6 +224,22 @@ function emptyContext(): EngineContext {
     playerStats: [],
     now: new Date()
   };
+}
+
+function dedupeFixtures(fixtures: EngineContext['fixtures']): EngineContext['fixtures'] {
+  const byId = new Map<string, EngineContext['fixtures'][number]>();
+  for (const fixture of fixtures) {
+    byId.set(fixture.id, { ...byId.get(fixture.id), ...fixture });
+  }
+  return [...byId.values()];
+}
+
+function dedupePrices(prices: MarketPrice[]): MarketPrice[] {
+  const byKey = new Map<string, MarketPrice>();
+  for (const price of prices) {
+    byKey.set(`${price.fixtureId}:${price.bookmaker}:${price.market}:${price.selection}:${price.odds}`, price);
+  }
+  return [...byKey.values()];
 }
 
 function startScheduler(): void {
