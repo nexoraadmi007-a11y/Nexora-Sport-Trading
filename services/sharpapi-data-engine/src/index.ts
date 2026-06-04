@@ -23,8 +23,8 @@ export class SharpApiDataEngine {
     if (!process.env.SHARPAPI_API_KEY) return emptyContext();
 
     const [nbaRows, mlbRows] = await Promise.all([
-      this.fetchOdds(process.env.SHARPAPI_NBA_SPORT || 'basketball', process.env.SHARPAPI_NBA_LEAGUE || 'nba', process.env.SHARPAPI_NBA_MARKETS || 'all'),
-      this.fetchOdds(process.env.SHARPAPI_MLB_SPORT || 'baseball', process.env.SHARPAPI_MLB_LEAGUE || 'mlb', process.env.SHARPAPI_MLB_MARKETS || 'all')
+      this.fetchOdds(process.env.SHARPAPI_NBA_SPORT || 'basketball', process.env.SHARPAPI_NBA_LEAGUE || 'nba', process.env.SHARPAPI_NBA_MARKETS || 'total_points,team_total,player_prop,1st_half'),
+      this.fetchOdds(process.env.SHARPAPI_MLB_SPORT || 'baseball', process.env.SHARPAPI_MLB_LEAGUE || 'mlb', process.env.SHARPAPI_MLB_MARKETS || '1st_half,total_points')
     ]);
 
     const rawMarkets = [
@@ -47,7 +47,7 @@ export class SharpApiDataEngine {
     const params = new URLSearchParams({
       sport,
       league,
-      sportsbooks: process.env.SHARPAPI_SPORTSBOOKS || 'onexbet',
+      sportsbook: process.env.SHARPAPI_SPORTSBOOKS || 'onexbet',
       limit: process.env.SHARPAPI_LIMIT || '200'
     });
 
@@ -127,12 +127,15 @@ function toRawMarket(row: SharpRow, sport: 'nba' | 'mlb'): RawMarket | undefined
 
   const marketText = [
     stringValue(row, ['market_key', 'market_type', 'market', 'market_name', 'bet_type', 'name']),
+    nestedStringValue(row, 'market_ref', ['id', 'label', 'name']),
     stringValue(row, ['period', 'period_type', 'betting_period']),
-    stringValue(row, ['stat_type', 'prop_type'])
+    stringValue(row, ['stat_type', 'prop_type']),
+    stringValue(row, ['selection_type'])
   ].filter(Boolean).join(' ');
 
   const selectionText = [
     stringValue(row, ['selection', 'outcome', 'side', 'label']),
+    stringValue(row, ['selection_type']),
     stringValue(row, ['participant', 'team', 'player_name', 'player'])
   ].filter(Boolean).join(' ');
 
@@ -143,7 +146,7 @@ function toRawMarket(row: SharpRow, sport: 'nba' | 'mlb'): RawMarket | undefined
     country: stringValue(row, ['country']) || 'USA',
     homeTeam: homeTeam || parsedTeams.homeTeam || 'Home Team',
     awayTeam: awayTeam || parsedTeams.awayTeam || 'Away Team',
-    startsAt: dateValue(row, ['commence_time', 'start_time', 'starts_at', 'startTime', 'game_time']),
+    startsAt: dateValue(row, ['event_start_time', 'commence_time', 'start_time', 'starts_at', 'startTime', 'game_time']),
     bookmaker: stringValue(row, ['sportsbook', 'bookmaker', 'book', 'sportsbook_name']) || 'SharpAPI',
     marketText,
     selectionText,
@@ -211,8 +214,8 @@ function propKeyFromText(text: string): string {
 }
 
 function sideFromText(text: string): 'Over' | 'Under' | undefined {
-  if (/\bover\b/.test(text)) return 'Over';
-  if (/\bunder\b/.test(text)) return 'Under';
+  if (/\bover\b/.test(text) || /_over\b/.test(text)) return 'Over';
+  if (/\bunder\b/.test(text) || /_under\b/.test(text)) return 'Under';
   return undefined;
 }
 
@@ -251,6 +254,12 @@ function stringValue(row: SharpRow, keys: string[]): string | undefined {
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   }
   return undefined;
+}
+
+function nestedStringValue(row: SharpRow, key: string, fields: string[]): string | undefined {
+  const nested = row[key];
+  if (!isObject(nested)) return undefined;
+  return stringValue(nested, fields);
 }
 
 function numberValue(row: SharpRow, keys: string[]): number | undefined {
