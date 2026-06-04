@@ -73,8 +73,16 @@ services:
         value: "https://api.sharpapi.io/api/v1"
       - key: SHARPAPI_SPORTSBOOKS
         value: "onexbet"
+      - key: SHARPAPI_NBA_SPORT
+        value: "basketball"
+      - key: SHARPAPI_NBA_LEAGUE
+        value: "nba"
       - key: SHARPAPI_NBA_MARKETS
         value: "all"
+      - key: SHARPAPI_MLB_SPORT
+        value: "baseball"
+      - key: SHARPAPI_MLB_LEAGUE
+        value: "mlb"
       - key: SHARPAPI_MLB_MARKETS
         value: "all"
       - key: SHARPAPI_LIMIT

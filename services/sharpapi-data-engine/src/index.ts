@@ -23,8 +23,8 @@ export class SharpApiDataEngine {
     if (!process.env.SHARPAPI_API_KEY) return emptyContext();
 
     const [nbaRows, mlbRows] = await Promise.all([
-      this.fetchOdds('basketball_nba', process.env.SHARPAPI_NBA_MARKETS || 'all'),
-      this.fetchOdds('baseball_mlb', process.env.SHARPAPI_MLB_MARKETS || 'all')
+      this.fetchOdds(process.env.SHARPAPI_NBA_SPORT || 'basketball', process.env.SHARPAPI_NBA_LEAGUE || 'nba', process.env.SHARPAPI_NBA_MARKETS || 'all'),
+      this.fetchOdds(process.env.SHARPAPI_MLB_SPORT || 'baseball', process.env.SHARPAPI_MLB_LEAGUE || 'mlb', process.env.SHARPAPI_MLB_MARKETS || 'all')
     ]);
 
     const rawMarkets = [
@@ -43,9 +43,10 @@ export class SharpApiDataEngine {
     };
   }
 
-  private async fetchOdds(sport: string, markets: string): Promise<unknown> {
+  private async fetchOdds(sport: string, league: string, markets: string): Promise<unknown> {
     const params = new URLSearchParams({
       sport,
+      league,
       sportsbooks: process.env.SHARPAPI_SPORTSBOOKS || 'onexbet',
       limit: process.env.SHARPAPI_LIMIT || '200'
     });
@@ -63,13 +64,13 @@ export class SharpApiDataEngine {
       });
 
       if (!response.ok) {
-        console.warn(`[sharpapi-data] odds rejected for ${sport}: ${response.status} ${await response.text()}`);
+        console.warn(`[sharpapi-data] odds rejected for ${sport}/${league}: ${response.status} ${await response.text()}`);
         return [];
       }
 
       return await response.json();
     } catch (error) {
-      console.warn(`[sharpapi-data] odds unavailable for ${sport}: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`[sharpapi-data] odds unavailable for ${sport}/${league}: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
   }
