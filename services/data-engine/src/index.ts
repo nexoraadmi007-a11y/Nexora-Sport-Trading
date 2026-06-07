@@ -189,7 +189,9 @@ export class DataEngine {
       }
 
       try {
-        const response = await fetchWithRetry(`https://api.sportsdata.io/v3/nba/stats/json/PlayerGameStatsByDateFinal/${date}?key=${key}`);
+        const response = await fetchWithRetry(`https://api.sportsdata.io/v3/nba/stats/json/PlayerGameStatsByDateFinal/${date}`, {
+          headers: { 'Ocp-Apim-Subscription-Key': key }
+        });
         if (!response.ok) {
           const stale = await this.cache.getStale<PlayerStatRef[]>(cacheKey, hours(168));
           if (stale && stale.length > 0) return stale.map(revivePlayerStat);
@@ -230,14 +232,16 @@ export class DataEngine {
   }
 }
 
-async function fetchWithRetry(url: string, attempts = 2): Promise<Response> {
+async function fetchWithRetry(url: string, initOrAttempts: RequestInit | number = {}, attempts = 2): Promise<Response> {
+  const init = typeof initOrAttempts === 'number' ? {} : initOrAttempts;
+  const maxAttempts = typeof initOrAttempts === 'number' ? initOrAttempts : attempts;
   let lastError: unknown;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await fetch(url);
+      return await fetch(url, init);
     } catch (error) {
       lastError = error;
-      if (attempt < attempts) await delay(750 * attempt);
+      if (attempt < maxAttempts) await delay(750 * attempt);
     }
   }
   throw lastError;
