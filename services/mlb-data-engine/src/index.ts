@@ -25,7 +25,9 @@ export class MlbDataEngine {
   async loadContext(): Promise<EngineContext> {
     const baseEvents = await this.fetchSportOdds();
     const limit = Number(process.env.MLB_FIRST5_EVENT_LIMIT || 16);
-    const enriched = await Promise.all(baseEvents.slice(0, limit).map((event) => this.fetchFirst5Odds(event)));
+    const enriched = process.env.ENABLE_MLB_FIRST5 === 'true'
+      ? await Promise.all(baseEvents.slice(0, limit).map((event) => this.fetchFirst5Odds(event)))
+      : baseEvents;
 
     return {
       fixtures: enriched.map(toFixture),
@@ -44,7 +46,7 @@ export class MlbDataEngine {
     const params = new URLSearchParams({
       apiKey,
       ...source.params,
-      markets: 'h2h',
+      markets: 'h2h,totals',
       oddsFormat: 'decimal',
       dateFormat: 'iso'
     });
@@ -126,12 +128,12 @@ function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
   for (const bookmaker of event.bookmakers || []) {
     if (!isPreferredBookmaker(bookmaker.title)) continue;
     for (const market of bookmaker.markets || []) {
-      if (!isFirst5TotalMarket(market.key)) continue;
+      if (!isSupportedMarket(market.key)) continue;
       for (const outcome of market.outcomes || []) {
         if (outcome.point === undefined) continue;
         prices.push({
           fixtureId: event.id,
-          market: `First 5 Innings ${outcome.name} ${outcome.point}`,
+          market: normalizeMarket(market.key, outcome.name, outcome.point),
           selection: `${outcome.name} ${outcome.point}`,
           bookmaker: bookmaker.title,
           odds: outcome.price,
@@ -144,8 +146,13 @@ function toMarketPrices(event: OddsApiEvent): MarketPrice[] {
   return prices;
 }
 
-function isFirst5TotalMarket(marketKey: string): boolean {
-  return marketKey === 'totals_1st_5_innings' || marketKey === 'alternate_totals_1st_5_innings';
+function isSupportedMarket(marketKey: string): boolean {
+  return marketKey === 'totals' || marketKey === 'totals_1st_5_innings' || marketKey === 'alternate_totals_1st_5_innings';
+}
+
+function normalizeMarket(marketKey: string, name: string, point: number): string {
+  if (marketKey === 'totals') return `MLB Total ${name} ${point}`;
+  return `First 5 Innings ${name} ${point}`;
 }
 
 function isPreferredBookmaker(bookmaker: string): boolean {

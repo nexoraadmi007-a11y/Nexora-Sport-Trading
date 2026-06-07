@@ -4,6 +4,7 @@ import { FootballDoubleChanceEngine } from '@nexora/football-doublechance-engine
 import { FootballOver15Engine } from '@nexora/football-over15-engine';
 import { MlbDataEngine } from '@nexora/mlb-data-engine';
 import { MlbFirst5Engine } from '@nexora/mlb-first5-engine';
+import { MlbGameTotalsEngine } from '@nexora/mlb-gametotals-engine';
 import { NbaFirstHalfEngine } from '@nexora/nba-firsthalf-engine';
 import { NbaPlayerPropsEngine } from '@nexora/nba-playerprops-engine';
 import { NbaTeamTotalsEngine } from '@nexora/nba-teamtotals-engine';
@@ -56,6 +57,7 @@ async function runSignalBatch() {
     const playerPropPrices = context.prices.filter((price) => price.market.startsWith('player_'));
     const tennisOverGames = context.prices.filter((price) => price.market.endsWith('Games') && price.market.startsWith('Over'));
     const mlbFirst5 = context.prices.filter((price) => price.market.startsWith('First 5 Innings'));
+    const mlbGameTotals = context.prices.filter((price) => price.market.startsWith('MLB Total'));
     console.log(`NEXORA dry run: fixtures=${context.fixtures.length}, prices=${context.prices.length}`);
     console.log(`Football fixtures: ${footballFixtures.length} (${formatLeagueCounts(footballFixtures)})`);
     console.log(`NBA fixtures: ${nbaFixtures.length}`);
@@ -79,7 +81,8 @@ async function runSignalBatch() {
     console.log(`ATP Over Games prices: ${tennisOverGames.length}`);
     console.log(`ATP signal delivery: ${process.env.ENABLE_TENNIS_SIGNALS === 'true' ? 'enabled' : 'validation-only/disabled'}`);
     console.log(`MLB First 5 prices: ${mlbFirst5.length}`);
-    console.log(`Deep NBA/MLB odds feed: ${process.env.SHARPAPI_API_KEY ? `configured (${process.env.SHARPAPI_SPORTSBOOKS || 'onexbet'})` : 'not configured'}`);
+    console.log(`MLB game total prices: ${mlbGameTotals.length}`);
+    console.log(`Deep NBA/MLB odds feed: ${isEnabled('ENABLE_SHARPAPI_FEED') && process.env.SHARPAPI_API_KEY ? `enabled (${process.env.SHARPAPI_SPORTSBOOKS || 'onexbet'})` : 'disabled'}`);
     const diagnostics = dataEngine.getDiagnostics();
     if (diagnostics) {
       console.log(`Cache: hits=${diagnostics.cache.hits}, misses=${diagnostics.cache.misses}, stale=${diagnostics.cache.staleHits}, writes=${diagnostics.cache.writes}`);
@@ -192,21 +195,24 @@ function buildEngines(): MarketEngine[] {
     new FootballOver15Engine(),
     new FootballBttsEngine(),
     new FootballDoubleChanceEngine(),
-    new NbaPlayerPropsEngine(),
     new NbaTeamTotalsEngine(),
-    new NbaFirstHalfEngine(),
+    ...(isEnabled('ENABLE_NBA_PLAYER_PROPS') ? [new NbaPlayerPropsEngine()] : []),
+    ...(isEnabled('ENABLE_NBA_FIRST_HALF') ? [new NbaFirstHalfEngine()] : []),
     ...(process.env.ENABLE_TENNIS_SIGNALS === 'true' ? [new TennisHardcourtOverGamesEngine()] : []),
-    new MlbFirst5Engine()
+    ...(isEnabled('ENABLE_MLB_GAME_TOTALS', true) ? [new MlbGameTotalsEngine()] : []),
+    ...(isEnabled('ENABLE_MLB_FIRST5') ? [new MlbFirst5Engine()] : [])
   ];
 }
 
 async function loadSpecializedContext(dataEngine: DataEngine): Promise<EngineContext> {
   const tennisEnabled = process.env.ENABLE_TENNIS_SIGNALS === 'true' || process.env.ENABLE_TENNIS_VALIDATION === 'true';
+  const mlbEnabled = isEnabled('ENABLE_MLB_GAME_TOTALS', true) || isEnabled('ENABLE_MLB_FIRST5');
+  const sharpEnabled = isEnabled('ENABLE_SHARPAPI_FEED') && Boolean(process.env.SHARPAPI_API_KEY);
   const [core, tennis, mlb, sharp] = await Promise.all([
     dataEngine.loadContext(),
     tennisEnabled ? new TennisDataEngine().loadContext() : emptyContext(),
-    new MlbDataEngine().loadContext(),
-    new SharpApiDataEngine().loadContext()
+    mlbEnabled ? new MlbDataEngine().loadContext() : emptyContext(),
+    sharpEnabled ? new SharpApiDataEngine().loadContext() : emptyContext()
   ]);
 
   return {
@@ -224,6 +230,12 @@ function emptyContext(): EngineContext {
     playerStats: [],
     now: new Date()
   };
+}
+
+function isEnabled(envName: string, defaultValue = false): boolean {
+  const value = process.env[envName];
+  if (value === undefined || value === '') return defaultValue;
+  return value === 'true';
 }
 
 function dedupeFixtures(fixtures: EngineContext['fixtures']): EngineContext['fixtures'] {
@@ -412,13 +424,17 @@ function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine
   }
 
   const nbaH1 = context.prices.filter((price) => isNbaFixturePrice(context, price) && isFirstHalfTotal(price.market));
-  if ((resultMap.get('First Half Totals') || 0) === 0) {
+  if (isEnabled('ENABLE_NBA_FIRST_HALF') && (resultMap.get('First Half Totals') || 0) === 0) {
     reasons.push(nbaH1.length === 0 ? 'NBA first half: no preferred-bookmaker H1 total markets' : `NBA first half: ${nbaH1.length} markets failed EV/quality filters`);
+  } else if (!isEnabled('ENABLE_NBA_FIRST_HALF')) {
+    reasons.push('NBA first half: disabled because Odds API 1xBet does not support H1 totals');
   }
 
   const propPrices = context.prices.filter((price) => price.market.startsWith('player_'));
-  if ((resultMap.get('Player Props') || 0) === 0) {
+  if (isEnabled('ENABLE_NBA_PLAYER_PROPS') && (resultMap.get('Player Props') || 0) === 0) {
     reasons.push(propPrices.length === 0 ? 'NBA props: no preferred-bookmaker player prop markets' : `NBA props: ${propPrices.length} prop markets failed stat matching/EV/quality filters`);
+  } else if (!isEnabled('ENABLE_NBA_PLAYER_PROPS')) {
+    reasons.push('NBA props: disabled because Odds API 1xBet does not support player prop markets');
   }
 
   const tennisOverGames = context.prices.filter((price) => price.market.startsWith('Over') && price.market.endsWith('Games'));
@@ -429,8 +445,15 @@ function engineZeroReasons(context: EngineContext, engineResults: Array<{ engine
   }
 
   const mlbFirst5 = context.prices.filter((price) => price.market.startsWith('First 5 Innings'));
-  if ((resultMap.get('MLB First 5 Innings') || 0) === 0) {
+  const mlbGameTotals = context.prices.filter((price) => price.market.startsWith('MLB Total'));
+  if ((resultMap.get('MLB Game Totals') || 0) === 0) {
+    reasons.push(mlbGameTotals.length === 0 ? 'MLB game totals: no preferred-bookmaker full-game total markets' : `MLB game totals: ${mlbGameTotals.length} markets failed EV/quality filters`);
+  }
+
+  if (isEnabled('ENABLE_MLB_FIRST5') && (resultMap.get('MLB First 5 Innings') || 0) === 0) {
     reasons.push(mlbFirst5.length === 0 ? 'MLB First 5: no preferred-bookmaker First 5 markets' : `MLB First 5: ${mlbFirst5.length} markets failed pitcher/weather/volatility/EV filters`);
+  } else if (!isEnabled('ENABLE_MLB_FIRST5')) {
+    reasons.push('MLB First 5: disabled because Odds API does not support First 5 totals');
   }
 
   return reasons;
@@ -477,7 +500,8 @@ function mlbCoverage(context: EngineContext): string[] {
     .map((fixture) => {
       const prices = context.prices.filter((price) => price.fixtureId === fixture.id);
       const first5 = prices.filter((price) => price.market.startsWith('First 5 Innings')).length;
-      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: first5=${first5}`;
+      const gameTotals = prices.filter((price) => price.market.startsWith('MLB Total')).length;
+      return `${fixture.homeTeam || 'N/A'} vs ${fixture.awayTeam || 'N/A'}: gameTotals=${gameTotals}, first5=${first5}`;
     });
 }
 

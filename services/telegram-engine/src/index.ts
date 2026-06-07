@@ -159,6 +159,14 @@ function marketDetails(signal: SignalCandidate): MarketDetails {
     };
   }
 
+  const mlbTotal = rawMarket.match(/^MLB Total (Over|Under) (\d+(?:\.\d+)?)$/i);
+  if (mlbTotal) {
+    return {
+      market: 'MLB Game Total',
+      selection: `${titleCase(mlbTotal[1])} ${mlbTotal[2]} Runs`
+    };
+  }
+
   return {
     market: rawMarket,
     selection

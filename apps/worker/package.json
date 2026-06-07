@@ -21,6 +21,7 @@
     "@nexora/football-over15-engine": "0.1.0",
     "@nexora/mlb-data-engine": "0.1.0",
     "@nexora/mlb-first5-engine": "0.1.0",
+    "@nexora/mlb-gametotals-engine": "0.1.0",
     "@nexora/nba-firsthalf-engine": "0.1.0",
     "@nexora/nba-playerprops-engine": "0.1.0",
     "@nexora/nba-teamtotals-engine": "0.1.0",

@@ -8,7 +8,18 @@ const DEFAULT_FOOTBALL_SPORT_KEYS = [
   'soccer_italy_serie_a',
   'soccer_germany_bundesliga',
   'soccer_france_ligue_one',
-  'soccer_saudi_arabia_pro_league'
+  'soccer_saudi_arabia_pro_league',
+  'soccer_brazil_campeonato',
+  'soccer_brazil_serie_b',
+  'soccer_chile_campeonato',
+  'soccer_china_superleague',
+  'soccer_conmebol_copa_libertadores',
+  'soccer_conmebol_copa_sudamericana',
+  'soccer_finland_veikkausliiga',
+  'soccer_norway_eliteserien',
+  'soccer_sweden_allsvenskan',
+  'soccer_sweden_superettan',
+  'soccer_spain_segunda_division'
 ];
 
 const DEFAULT_NBA_SPORT_KEYS = ['basketball_nba'];
@@ -52,7 +63,7 @@ export class DataEngine {
     this.additionalMarketSeen.clear();
     const eventsBySport = await Promise.all([...footballSportKeys(), ...nbaSportKeys()].map((sportKey) => this.fetchOdds(sportKey)));
     const events = (await Promise.all(eventsBySport.flat().map((event) => this.enrichAdditionalMarkets(event)))).flat();
-    const playerStats = await this.fetchRecentNbaPlayerStats();
+    const playerStats = isEnabled('ENABLE_NBA_PLAYER_PROPS') ? await this.fetchRecentNbaPlayerStats() : [];
     this.diagnostics = {
       cache: this.cache.snapshot(),
       quota: await this.quota.snapshot()
@@ -118,6 +129,7 @@ export class DataEngine {
   private async enrichAdditionalMarkets(event: OddsApiEvent): Promise<OddsApiEvent> {
     if (!isInsideAdditionalMarketWindow(event.commence_time)) return event;
     if (event.sport_key === 'basketball_nba') {
+      if (!isEnabled('ENABLE_ODDS_API_NBA_EXTENDED_MARKETS')) return event;
       const withTeamTotals = await this.enrichEventMarkets(event, 'team_totals,alternate_team_totals', 'nbaTeamTotals');
       const withFirstHalf = await this.enrichEventMarkets(withTeamTotals, 'totals_h1', 'nbaFirstHalf');
       return this.enrichEventMarkets(withFirstHalf, 'player_points,player_rebounds,player_assists,player_threes', 'nbaPlayerProps');
@@ -362,7 +374,18 @@ function countryFromSportKey(sportKey: string): string | undefined {
     soccer_italy_serie_a: 'Italy',
     soccer_germany_bundesliga: 'Germany',
     soccer_france_ligue_one: 'France',
-    soccer_saudi_arabia_pro_league: 'Saudi Arabia'
+    soccer_saudi_arabia_pro_league: 'Saudi Arabia',
+    soccer_brazil_campeonato: 'Brazil',
+    soccer_brazil_serie_b: 'Brazil',
+    soccer_chile_campeonato: 'Chile',
+    soccer_china_superleague: 'China',
+    soccer_conmebol_copa_libertadores: 'South America',
+    soccer_conmebol_copa_sudamericana: 'South America',
+    soccer_finland_veikkausliiga: 'Finland',
+    soccer_norway_eliteserien: 'Norway',
+    soccer_sweden_allsvenskan: 'Sweden',
+    soccer_sweden_superettan: 'Sweden',
+    soccer_spain_segunda_division: 'Spain'
   };
   return countries[sportKey];
 }
@@ -385,6 +408,10 @@ function configuredSportKeys(envName: string, fallback: string[]): string[] {
     .filter(Boolean);
 
   return keys.length > 0 ? keys : fallback;
+}
+
+function isEnabled(envName: string): boolean {
+  return process.env[envName] === 'true';
 }
 
 function oddsSourceParams(defaultRegions: string): { params: Record<string, string>; cacheKey: string } {
