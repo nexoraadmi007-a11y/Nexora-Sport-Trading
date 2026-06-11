@@ -68,6 +68,7 @@ export function formatSignal(_signal: SignalCandidate): string {
   const match = fixture?.homeTeam && fixture.awayTeam
     ? `${fixture.homeTeam} vs ${fixture.awayTeam}`
     : signal.subject || 'Unknown Match';
+  const date = fixture?.startsAt ? watDate(fixture.startsAt) : 'TBC';
   const time = fixture?.startsAt ? watTime(fixture.startsAt) : 'TBC';
 
   return [
@@ -79,6 +80,7 @@ export function formatSignal(_signal: SignalCandidate): string {
     `Engine: ${signal.engine}`,
     `League: ${league}`,
     `Match: ${match}`,
+    `Date: ${date}`,
     `Time: ${time} WAT`,
     signal.subject ? `Subject: ${signal.subject}` : undefined,
     '',
@@ -100,6 +102,16 @@ export function formatSignal(_signal: SignalCandidate): string {
     '',
     '━━━━━━━━━━━━━━━'
   ].filter((line): line is string => line !== undefined).join('\n');
+}
+
+function watDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Lagos',
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }).format(date);
 }
 
 function watTime(date: Date): string {
