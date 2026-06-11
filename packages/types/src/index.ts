@@ -1,15 +1,38 @@
-export type Sport = 'football' | 'nba' | 'tennis' | 'mlb' | 'generic';
+export type Sport = 'football' | 'nba' | 'generic';
 
 export type SignalStatus = 'draft' | 'approved' | 'sent' | 'rejected' | 'no_op';
+export type SignalTier = 'A+' | 'A' | 'B';
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+export type FootballCompetitionKind = 'club' | 'international_tournament' | 'qualification' | 'friendly' | 'unknown';
+export type FootballPriorityTier =
+  | 'tier_1_club'
+  | 'uefa_club'
+  | 'world_cup'
+  | 'euro'
+  | 'copa_america'
+  | 'afcon'
+  | 'qualification'
+  | 'nations_league'
+  | 'friendly'
+  | 'other';
+
+export interface CompetitionContext {
+  kind: FootballCompetitionKind;
+  priorityTier: FootballPriorityTier;
+  tournamentMode: boolean;
+  priorityScore: number;
+}
 
 export interface FixtureRef {
   id: string;
   sport: Sport;
   league: string;
+  sportKey?: string;
   country?: string;
   homeTeam?: string;
   awayTeam?: string;
   startsAt: Date;
+  competition?: CompetitionContext;
 }
 
 export interface MarketPrice {
@@ -18,6 +41,9 @@ export interface MarketPrice {
   selection: string;
   bookmaker: string;
   odds: number;
+  point?: number;
+  sourceMarketKey?: string;
+  description?: string;
   capturedAt: Date;
 }
 
@@ -39,6 +65,12 @@ export interface SignalCandidate {
   market: string;
   selection: string;
   odds?: number;
+  probability?: number;
+  ev?: number;
+  confidence?: number;
+  qualityScore?: number;
+  tier?: SignalTier;
+  riskLevel?: RiskLevel;
   status?: SignalStatus;
   reason?: string;
   metadata?: Record<string, unknown>;

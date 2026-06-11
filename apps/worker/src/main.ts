@@ -1,9 +1,18 @@
 import { DataEngine } from '@nexora/data-engine';
+import { FootballBttsEngine } from '@nexora/football-btts-engine';
+import { FootballDoubleChanceEngine } from '@nexora/football-doublechance-engine';
+import { FootballOver15Engine } from '@nexora/football-over15-engine';
+import { NbaFirstHalfEngine } from '@nexora/nba-firsthalf-engine';
+import { NbaPlayerPropsEngine } from '@nexora/nba-playerprops-engine';
+import { NbaTeamTotalsEngine } from '@nexora/nba-teamtotals-engine';
 import { PersistenceEngine } from '@nexora/persistence-engine';
+import { RiskEngine } from '@nexora/risk-engine';
 import { loadDotEnv, validateRequiredEnv } from '@nexora/shared';
-import { TelegramEngine } from '@nexora/telegram-engine';
+import { SignalEngine } from '@nexora/signal-engine';
+import { TelegramEngine, formatSignal } from '@nexora/telegram-engine';
+import type { EngineContext, MarketEngine, SignalCandidate } from '@nexora/types';
 
-async function runFoundationBatch(): Promise<void> {
+async function runSignalBatch(): Promise<void> {
   loadDotEnv();
   if (process.env.NODE_ENV === 'production') {
     validateRequiredEnv();
@@ -12,18 +21,23 @@ async function runFoundationBatch(): Promise<void> {
   const dataEngine = new DataEngine();
   const context = await dataEngine.loadContext();
   const diagnostics = dataEngine.getDiagnostics();
-
-  const message = [
-    'NEXORA FOUNDATION MODE',
-    'Old betting logic has been removed.',
-    'No signal engines are configured yet.',
-    `Fixtures loaded: ${context.fixtures.length}`,
-    `Prices loaded: ${context.prices.length}`,
-    diagnostics ? `Cache hits: ${diagnostics.cache.hits}, misses: ${diagnostics.cache.misses}` : undefined
-  ].filter((line): line is string => Boolean(line)).join('\n');
+  const engines = buildEngines();
+  const engineResults = await Promise.all(engines.map(async (engine) => ({
+    engine: engine.name,
+    candidates: await engine.generate(context)
+  })));
+  const candidates = engineResults.flatMap((result) => result.candidates);
+  const signalAudit = new SignalEngine().audit(candidates);
+  const approved = new RiskEngine().removeCorrelatedExposure(signalAudit.approved);
 
   if (process.argv.includes('--dry-run') || process.argv.includes('--no-send')) {
-    console.log(message);
+    printDiagnostics(context, diagnostics, engineResults, candidates, signalAudit.rejected, approved);
+    if (approved.length > 0) {
+      for (const signal of approved) {
+        console.log('');
+        console.log(formatSignal(signal));
+      }
+    }
     return;
   }
 
@@ -31,15 +45,95 @@ async function runFoundationBatch(): Promise<void> {
   const persistence = new PersistenceEngine();
 
   try {
-    await telegram.sendMessage(message);
-    await persistence.logTelegram({
-      chatId: process.env.TELEGRAM_CHAT_ID || '',
-      message,
-      status: 'sent'
-    });
-    console.log('TELEGRAM_SENT foundation status');
+    if (approved.length === 0) {
+      await telegram.sendNoBet();
+      await persistence.logTelegram({
+        chatId: process.env.TELEGRAM_CHAT_ID || '',
+        message: 'NO ELITE SIGNALS TODAY',
+        status: 'sent'
+      });
+      console.log('TELEGRAM_SENT NO ELITE SIGNALS TODAY');
+      return;
+    }
+
+    for (const signal of approved) {
+      if (await persistence.hasDuplicateSignal(signal)) {
+        console.log(`SKIP duplicate persisted signal | ${label(signal)}`);
+        continue;
+      }
+
+      const signalId = await persistence.saveApprovedSignal(signal);
+      await telegram.sendSignal(signal);
+      await persistence.markSignalSent(signalId);
+      await persistence.logTelegram({
+        signalId,
+        chatId: process.env.TELEGRAM_CHAT_ID || '',
+        message: `${signal.engine} | ${label(signal)} | ${signal.market} | ${signal.selection}`,
+        status: 'sent'
+      });
+      console.log(`TELEGRAM_SENT ${signal.tier || 'B'} | ${label(signal)} | ${signal.market}`);
+    }
   } finally {
     await persistence.disconnect();
+  }
+}
+
+function buildEngines(): MarketEngine[] {
+  return [
+    new FootballOver15Engine(),
+    new FootballBttsEngine(),
+    new FootballDoubleChanceEngine(),
+    new NbaPlayerPropsEngine(),
+    new NbaTeamTotalsEngine(),
+    new NbaFirstHalfEngine()
+  ];
+}
+
+function printDiagnostics(
+  context: EngineContext,
+  diagnostics: ReturnType<DataEngine['getDiagnostics']>,
+  engineResults: Array<{ engine: string; candidates: SignalCandidate[] }>,
+  candidates: SignalCandidate[],
+  rejected: Array<{ signal: SignalCandidate; reasons: string[] }>,
+  approved: SignalCandidate[]
+): void {
+  const footballFixtures = context.fixtures.filter((fixture) => fixture.sport === 'football');
+  const nbaFixtures = context.fixtures.filter((fixture) => fixture.sport === 'nba');
+
+  console.log('NEXORA ELITE SIGNALS DRY RUN');
+  console.log(`Fixtures loaded: ${context.fixtures.length}`);
+  console.log(`Football fixtures: ${footballFixtures.length}`);
+  console.log(`NBA fixtures: ${nbaFixtures.length}`);
+  console.log(`Prices loaded: ${context.prices.length}`);
+  console.log(`Candidates: ${candidates.length}`);
+  console.log(`Rejected: ${rejected.length}`);
+  console.log(`Approved: ${approved.length}`);
+
+  if (diagnostics) {
+    console.log(`Sport keys scanned: ${diagnostics.sportKeysScanned.join(', ') || 'none'}`);
+    console.log(`Cache: hits=${diagnostics.cache.hits}, misses=${diagnostics.cache.misses}, stale=${diagnostics.cache.staleHits}, writes=${diagnostics.cache.writes}`);
+    console.log(`Quota: daily=${JSON.stringify(diagnostics.quota.daily)}, hourly=${JSON.stringify(diagnostics.quota.hourly)}, skipped=${diagnostics.quota.skipped}`);
+    for (const error of diagnostics.errors) {
+      console.log(`DATA_WARNING ${error}`);
+    }
+  }
+
+  for (const result of engineResults) {
+    console.log(`${result.engine}: ${result.candidates.length} candidates`);
+  }
+
+  const reasonCounts = new Map<string, number>();
+  for (const item of rejected) {
+    for (const reason of item.reasons) {
+      reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + 1);
+    }
+  }
+
+  if (reasonCounts.size > 0) {
+    console.log('Rejection reasons:');
+    for (const [reason, count] of [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])) {
+      console.log(`- ${reason}: ${count}`);
+    }
   }
 }
 
@@ -59,7 +153,7 @@ function startScheduler(): void {
   let lastRunKey = '';
   const failedRunAttempts = new Map<string, number>();
 
-  console.log(`NEXORA foundation scheduler active: ${scanTimes.join(', ')} WAT`);
+  console.log(`NEXORA scheduler active: ${scanTimes.join(', ')} WAT`);
 
   const tick = async () => {
     const now = watParts(new Date());
@@ -76,7 +170,7 @@ function startScheduler(): void {
     console.log(`SCHEDULER_TRIGGER ${slot} WAT current=${now.time} WAT`);
 
     try {
-      await runFoundationBatch();
+      await runSignalBatch();
       lastRunKey = runKey;
       failedRunAttempts.delete(runKey);
       console.log(`SCHEDULER_DONE ${slot} WAT`);
@@ -98,7 +192,7 @@ function startScheduler(): void {
 async function notifySchedulerFailure(error: unknown): Promise<void> {
   try {
     const message = error instanceof Error ? error.message : String(error);
-    await new TelegramEngine().sendMessage(`NEXORA foundation scheduler failure\n${message}`);
+    await new TelegramEngine().sendMessage(`NEXORA scheduler failure\n${message}`);
   } catch (notifyError) {
     console.error('SCHEDULER_NOTIFY_FAILED', notifyError);
   }
@@ -141,10 +235,18 @@ function minutesOfDay(time: string): number {
   return (hour * 60) + minute;
 }
 
+function label(signal: SignalCandidate): string {
+  if (signal.fixture?.homeTeam && signal.fixture.awayTeam) {
+    return `${signal.fixture.homeTeam} vs ${signal.fixture.awayTeam}`;
+  }
+
+  return signal.subject || signal.market;
+}
+
 const manualMode = ['--dry-run', '--no-send', '--once'].some((flag) => process.argv.includes(flag));
 
 if (manualMode) {
-  runFoundationBatch().catch((error) => {
+  runSignalBatch().catch((error) => {
     console.error(error);
     process.exitCode = 1;
   });
