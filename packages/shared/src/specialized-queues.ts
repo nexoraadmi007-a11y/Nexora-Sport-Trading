@@ -1,4 +1,4 @@
 export const specializedQueues = {
-  tennisOvergames: 'tennis-overgames-queue',
-  mlbFirst5: 'mlb-first5-queue'
+  foundationScan: 'foundation-scan-queue',
+  foundationDelivery: 'foundation-delivery-queue'
 } as const;

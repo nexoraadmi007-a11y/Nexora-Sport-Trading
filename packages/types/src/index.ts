@@ -1,8 +1,6 @@
-export type Sport = 'football' | 'nba' | 'tennis' | 'mlb';
+export type Sport = 'football' | 'nba' | 'tennis' | 'mlb' | 'generic';
 
-export type SignalTier = 'A+' | 'A' | 'B';
-
-export type SignalStatus = 'candidate' | 'approved' | 'sent' | 'rejected' | 'no_bet';
+export type SignalStatus = 'draft' | 'approved' | 'sent' | 'rejected' | 'no_op';
 
 export interface FixtureRef {
   id: string;
@@ -29,11 +27,7 @@ export interface PlayerStatRef {
   team?: string;
   opponent?: string;
   gameDate: Date;
-  points?: number;
-  rebounds?: number;
-  assists?: number;
-  threePointersMade?: number;
-  minutes?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SignalCandidate {
@@ -44,13 +38,10 @@ export interface SignalCandidate {
   bookmaker?: string;
   market: string;
   selection: string;
-  odds: number;
-  trueProbability: number;
-  ev: number;
-  confidence: number;
-  qualityScore: number;
-  tier: SignalTier;
-  reason: string;
+  odds?: number;
+  status?: SignalStatus;
+  reason?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface EngineContext {

@@ -1,7 +1,3 @@
-export function ev(trueProbability: number, odds: number): number {
-  return trueProbability * odds - 1;
-}
-
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -13,4 +9,5 @@ export function watCronTimes(): string[] {
 export function utcCronForWatScans(): string {
   return '30 8,12,16 * * *';
 }
+
 export * from './bookmakers';

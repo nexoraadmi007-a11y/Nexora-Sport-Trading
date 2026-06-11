@@ -1,7 +1,12 @@
-import type { MarketPrice } from '@nexora/types';
+export interface MarketSnapshot {
+  source: string;
+  capturedAt: Date;
+  payload: unknown;
+}
 
 export class MarketEngineService {
-  findComparablePrices(prices: MarketPrice[], market: string): MarketPrice[] {
-    return prices.filter((price) => price.market === market);
+  async normalizeSnapshot(_snapshot: MarketSnapshot): Promise<unknown[]> {
+    // TODO: Rebuild market normalization for the next NEXORA architecture.
+    return [];
   }
 }

@@ -1,5 +1,5 @@
 export class ClvEngine {
-  calculate(signalOdds: number, closingOdds: number): number {
-    return closingOdds === 0 ? 0 : (signalOdds - closingOdds) / closingOdds;
+  async trackClosingLine(_params: unknown): Promise<void> {
+    // TODO: Rebuild CLV tracking after new signal schema is defined.
   }
 }
