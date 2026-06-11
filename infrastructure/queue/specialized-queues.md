@@ -1,8 +1,10 @@
 # Specialized Queue Names
 
-The calibrated Tennis and MLB extension keeps independent namespaces for future BullMQ workers:
+Business-specific queue names have been cleared during the foundation reset.
 
-- `tennis-overgames-queue`
-- `mlb-first5-queue`
+Reserved foundation namespaces for future BullMQ workers:
 
-These queues are not mixed with football, NBA, Telegram, scheduler, or persistence work. The current worker runs the scan synchronously, but the names are reserved for isolated queue routing and Redis deduplication.
+- `foundation-scan-queue`
+- `foundation-delivery-queue`
+
+Future signal engines should add their own isolated queues without mixing payloads with Telegram, scheduler, persistence, or shared infrastructure work.
