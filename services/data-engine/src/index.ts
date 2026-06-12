@@ -117,7 +117,7 @@ export class DataEngine {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/sports/?apiKey=${encodeURIComponent(apiKey)}`);
+      const response = await fetchWithTimeout(`${this.baseUrl}/sports/?apiKey=${encodeURIComponent(apiKey)}`);
       if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
       const sports = await response.json() as OddsApiSport[];
       await this.cache.set(cacheKey, sports, 24 * 60 * 60 * 1000);
@@ -155,11 +155,11 @@ export class DataEngine {
     url.searchParams.set('commenceTimeTo', window.to);
 
     try {
-      let response = await fetch(url);
+      let response = await fetchWithTimeout(url);
       if (!response.ok && markets !== 'h2h,totals') {
         errors.push(`Extended markets unavailable for ${sportKey}; retrying core markets`);
         url.searchParams.set('markets', 'h2h,totals');
-        response = await fetch(url);
+        response = await fetchWithTimeout(url);
       }
 
       if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
@@ -196,7 +196,7 @@ export class DataEngine {
     url.searchParams.set('dateFormat', 'iso');
 
     try {
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url);
       if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
       const deepEvent = await response.json() as OddsApiEvent;
       await this.cache.set(cacheKey, deepEvent, 30 * 60 * 1000);
@@ -491,4 +491,24 @@ function formatPoint(point: number): string {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchWithTimeout(input: string | URL, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.ODDS_API_TIMEOUT_MS || 20_000));
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`request timed out after ${Number(process.env.ODDS_API_TIMEOUT_MS || 20_000)}ms`);
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
