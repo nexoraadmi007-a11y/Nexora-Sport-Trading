@@ -56,8 +56,12 @@ async function runSignalBatch(): Promise<void> {
       return;
     }
 
+    let sentCount = 0;
+    let duplicateCount = 0;
+
     for (const signal of approved) {
       if (await persistence.hasDuplicateSignal(signal)) {
+        duplicateCount += 1;
         console.log(`SKIP duplicate persisted signal | ${label(signal)}`);
         continue;
       }
@@ -72,6 +76,19 @@ async function runSignalBatch(): Promise<void> {
         status: 'sent'
       });
       console.log(`TELEGRAM_SENT ${signal.tier || 'B'} | ${label(signal)} | ${signal.market}`);
+      sentCount += 1;
+    }
+
+    if (sentCount === 0) {
+      await telegram.sendNoBet();
+      await persistence.logTelegram({
+        chatId: process.env.TELEGRAM_CHAT_ID || '',
+        message: duplicateCount > 0
+          ? `NO ELITE SIGNALS TODAY | ${duplicateCount} duplicate approved signal(s) skipped`
+          : 'NO ELITE SIGNALS TODAY',
+        status: 'sent'
+      });
+      console.log(`TELEGRAM_SENT NO ELITE SIGNALS TODAY | duplicates_skipped=${duplicateCount}`);
     }
   } finally {
     await persistence.disconnect();

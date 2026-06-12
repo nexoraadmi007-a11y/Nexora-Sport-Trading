@@ -1,22 +1,71 @@
 import { PrismaClient } from '@prisma/client';
 import type { SignalCandidate } from '@nexora/types';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+interface SentSignalRecord {
+  id: string;
+  matchKey: string;
+  signalKey: string;
+  match: string;
+  market: string;
+  selection: string;
+  startsAt?: string;
+  status: 'approved' | 'sent';
+  createdAt: string;
+  sentAt?: string;
+}
 
 export class PersistenceEngine {
   private readonly prisma = new PrismaClient();
+  private readonly cacheDir = process.env.NEXORA_CACHE_DIR || join(process.cwd(), '.nexora-cache');
+  private readonly sentSignalsFile = join(this.cacheDir, 'sent-signals.json');
 
-  async hasDuplicateSignal(_signal: SignalCandidate): Promise<boolean> {
-    // TODO: Rebuild idempotency rules for the next signal schema.
-    return false;
+  async hasDuplicateSignal(signal: SignalCandidate): Promise<boolean> {
+    if (process.argv.includes('--force-resend') || process.env.ALLOW_SIGNAL_RESEND === 'true') {
+      return false;
+    }
+
+    const matchKey = this.matchKey(signal);
+    const signalKey = this.signalKey(signal);
+    const registry = await this.loadSentRegistry();
+    const localDuplicate = registry.some((record) =>
+      record.status === 'sent' &&
+      (record.matchKey === matchKey || record.signalKey === signalKey) &&
+      !this.isExpiredDuplicate(record)
+    );
+
+    if (localDuplicate) return true;
+    return this.hasRecentTelegramLog(signal);
   }
 
-  async saveApprovedSignal(_signal: SignalCandidate): Promise<string | undefined> {
-    // TODO: Rebuild signal persistence for the next signal schema.
-    return undefined;
+  async saveApprovedSignal(signal: SignalCandidate): Promise<string | undefined> {
+    const id = randomUUID();
+    const registry = await this.loadSentRegistry();
+    registry.push({
+      id,
+      matchKey: this.matchKey(signal),
+      signalKey: this.signalKey(signal),
+      match: this.matchLabel(signal),
+      market: signal.market,
+      selection: signal.selection,
+      startsAt: signal.fixture?.startsAt?.toISOString(),
+      status: 'approved',
+      createdAt: new Date().toISOString()
+    });
+    await this.saveSentRegistry(registry);
+    return id;
   }
 
-  async markSignalSent(_signalId?: string): Promise<void> {
-    // TODO: Rebuild sent-state persistence for the next signal schema.
+  async markSignalSent(signalId?: string): Promise<void> {
+    if (!signalId) return;
+    const registry = await this.loadSentRegistry();
+    const record = registry.find((item) => item.id === signalId);
+    if (!record) return;
+    record.status = 'sent';
+    record.sentAt = new Date().toISOString();
+    await this.saveSentRegistry(registry);
   }
 
   async logTelegram(params: { signalId?: string; chatId: string; message: string; status: string; error?: string }): Promise<void> {
@@ -70,6 +119,47 @@ export class PersistenceEngine {
     }
   }
 
+  private async hasRecentTelegramLog(signal: SignalCandidate): Promise<boolean> {
+    if (!this.canUseRest()) return false;
+
+    try {
+      const match = this.matchLabel(signal);
+      const market = signal.market;
+      const since = new Date(Date.now() - Number(process.env.SIGNAL_DUPLICATE_LOOKBACK_DAYS || 30) * 24 * 60 * 60 * 1000)
+        .toISOString();
+      const query = new URLSearchParams({
+        select: 'message,status,sentAt',
+        status: 'eq.sent',
+        message: `ilike.*${match}*`,
+        sentAt: `gte.${since}`,
+        limit: '20'
+      });
+      const rows = await this.rest<Array<{ message?: string }>>(`TelegramLog?${query.toString()}`);
+      return rows.some((row) => {
+        const message = row.message || '';
+        return message.includes(match) && message.includes(market);
+      });
+    } catch (error) {
+      this.warn('Telegram duplicate lookup', error);
+      return false;
+    }
+  }
+
+  private async loadSentRegistry(): Promise<SentSignalRecord[]> {
+    try {
+      const rows = JSON.parse(await readFile(this.sentSignalsFile, 'utf8')) as SentSignalRecord[];
+      return rows.filter((row) => row && typeof row.id === 'string');
+    } catch {
+      return [];
+    }
+  }
+
+  private async saveSentRegistry(records: SentSignalRecord[]): Promise<void> {
+    await mkdir(this.cacheDir, { recursive: true });
+    const maxRecords = Number(process.env.SENT_SIGNAL_REGISTRY_LIMIT || 1000);
+    await writeFile(this.sentSignalsFile, JSON.stringify(records.slice(-maxRecords), null, 2), 'utf8');
+  }
+
   private async rest<T = unknown>(path: string, init?: RequestInit): Promise<T> {
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
     const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/${path}`, {
@@ -94,5 +184,42 @@ export class PersistenceEngine {
   private warn(action: string, error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`Persistence skipped after ${action} failure: ${message}`);
+  }
+
+  private matchKey(signal: SignalCandidate): string {
+    const fixture = signal.fixture;
+    const raw = fixture?.id || [
+      fixture?.homeTeam || '',
+      fixture?.awayTeam || '',
+      fixture?.startsAt?.toISOString() || '',
+      signal.subject || ''
+    ].join('|');
+    return this.hash(raw.toLowerCase());
+  }
+
+  private signalKey(signal: SignalCandidate): string {
+    return this.hash([
+      this.matchKey(signal),
+      signal.market,
+      signal.selection
+    ].join('|').toLowerCase());
+  }
+
+  private matchLabel(signal: SignalCandidate): string {
+    if (signal.fixture?.homeTeam && signal.fixture.awayTeam) {
+      return `${signal.fixture.homeTeam} vs ${signal.fixture.awayTeam}`;
+    }
+
+    return signal.subject || signal.market;
+  }
+
+  private isExpiredDuplicate(record: SentSignalRecord): boolean {
+    const expiryMs = Number(process.env.SIGNAL_DUPLICATE_LOOKBACK_DAYS || 30) * 24 * 60 * 60 * 1000;
+    const sentAt = record.sentAt || record.createdAt;
+    return Date.now() - new Date(sentAt).getTime() > expiryMs;
+  }
+
+  private hash(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
   }
 }
