@@ -128,6 +128,8 @@ function printDiagnostics(
 
   if (diagnostics) {
     console.log(`Sport keys scanned: ${diagnostics.sportKeysScanned.join(', ') || 'none'}`);
+    console.log(`Scan window: next ${diagnostics.scanWindowHours} hours`);
+    console.log(`Deep market events scanned: ${diagnostics.deepMarketEventsScanned}`);
     console.log(`Cache: hits=${diagnostics.cache.hits}, misses=${diagnostics.cache.misses}, stale=${diagnostics.cache.staleHits}, writes=${diagnostics.cache.writes}`);
     console.log(`Quota: daily=${JSON.stringify(diagnostics.quota.daily)}, hourly=${JSON.stringify(diagnostics.quota.hourly)}, skipped=${diagnostics.quota.skipped}`);
     for (const error of diagnostics.errors) {

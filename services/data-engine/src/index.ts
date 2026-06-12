@@ -8,6 +8,8 @@ export interface DataEngineDiagnostics {
   fixturesLoaded: number;
   pricesLoaded: number;
   sportKeysScanned: string[];
+  deepMarketEventsScanned: number;
+  scanWindowHours: number;
   errors: string[];
 }
 
@@ -58,7 +60,7 @@ export class DataEngine {
     const key = process.env.ODDS_API_KEY;
 
     if (!key) {
-      this.diagnostics = await this.snapshot(0, 0, sportKeysScanned, ['ODDS_API_KEY missing']);
+      this.diagnostics = await this.snapshot(0, 0, sportKeysScanned, 0, ['ODDS_API_KEY missing']);
       return emptyContext();
     }
 
@@ -66,19 +68,29 @@ export class DataEngine {
     const keys = this.selectSportKeys(sports);
     const fixtureMap = new Map<string, FixtureRef>();
     const prices: MarketPrice[] = [];
+    let deepMarketEventsScanned = 0;
 
     for (const sportKey of keys) {
       sportKeysScanned.push(sportKey);
       const events = await this.loadOdds(key, sportKey, errors);
+      const deepMarketEvents = events.slice(0, Number(process.env.DEEP_MARKET_EVENT_LIMIT || 4));
 
       for (const event of events) {
         const fixture = toFixture(event);
         fixtureMap.set(fixture.id, fixture);
         prices.push(...toPrices(event));
       }
+
+      for (const event of deepMarketEvents) {
+        const deepEvent = await this.loadEventOdds(key, event, errors);
+        if (!deepEvent) continue;
+        deepMarketEventsScanned += 1;
+        fixtureMap.set(deepEvent.id, toFixture(deepEvent));
+        prices.push(...toPrices(deepEvent));
+      }
     }
 
-    this.diagnostics = await this.snapshot(fixtureMap.size, prices.length, sportKeysScanned, errors);
+    this.diagnostics = await this.snapshot(fixtureMap.size, prices.length, sportKeysScanned, deepMarketEventsScanned, errors);
 
     return {
       fixtures: [...fixtureMap.values()],
@@ -121,7 +133,8 @@ export class DataEngine {
     const markets: string = sportKey === 'basketball_nba'
       ? 'h2h,spreads,totals,player_points,player_rebounds,player_assists,player_threes,team_totals'
       : 'h2h,totals,btts,double_chance';
-    const cacheKey = `odds-api:odds:${sportKey}:${regions}:${markets}:v2`;
+    const window = scanWindow();
+    const cacheKey = `odds-api:odds:${sportKey}:${regions}:${markets}:${window.from}:${window.to}:v3`;
     const cached = await this.cache.get<OddsApiEvent[]>(cacheKey);
     if (cached) return cached;
 
@@ -138,6 +151,8 @@ export class DataEngine {
     url.searchParams.set('markets', markets);
     url.searchParams.set('oddsFormat', 'decimal');
     url.searchParams.set('dateFormat', 'iso');
+    url.searchParams.set('commenceTimeFrom', window.from);
+    url.searchParams.set('commenceTimeTo', window.to);
 
     try {
       let response = await fetch(url);
@@ -154,6 +169,41 @@ export class DataEngine {
     } catch (error) {
       errors.push(`Odds API odds failed for ${sportKey}: ${messageOf(error)}`);
       return await this.cache.getStale<OddsApiEvent[]>(cacheKey, 4 * 60 * 60 * 1000) || [];
+    }
+  }
+
+  private async loadEventOdds(apiKey: string, event: OddsApiEvent, errors: string[]): Promise<OddsApiEvent | undefined> {
+    const regions = process.env.ODDS_DEEP_MARKET_REGIONS || process.env.ODDS_ADDITIONAL_MARKET_REGIONS || process.env.ODDS_API_REGIONS || 'uk';
+    const markets = event.sport_key === 'basketball_nba'
+      ? 'player_points,player_rebounds,player_assists,player_threes,team_totals,team_totals_h1,totals_h1,alternate_totals_h1'
+      : 'btts,double_chance';
+    const cacheKey = `odds-api:event:${event.sport_key}:${event.id}:${regions}:${markets}:v1`;
+    const cached = await this.cache.get<OddsApiEvent>(cacheKey);
+    if (cached) return cached;
+
+    if (!await this.quota.reserveCall('odds-api', `event-odds:${event.sport_key}`, 'low')) {
+      const stale = await this.cache.getStale<OddsApiEvent>(cacheKey, 2 * 60 * 60 * 1000);
+      if (stale) return stale;
+      errors.push(`Deep market odds skipped by quota guard for ${event.sport_key} ${event.id}`);
+      return undefined;
+    }
+
+    const url = new URL(`${this.baseUrl}/sports/${event.sport_key}/events/${event.id}/odds/`);
+    url.searchParams.set('apiKey', apiKey);
+    url.searchParams.set('regions', regions);
+    url.searchParams.set('markets', markets);
+    url.searchParams.set('oddsFormat', 'decimal');
+    url.searchParams.set('dateFormat', 'iso');
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+      const deepEvent = await response.json() as OddsApiEvent;
+      await this.cache.set(cacheKey, deepEvent, 30 * 60 * 1000);
+      return deepEvent;
+    } catch (error) {
+      errors.push(`Deep market odds failed for ${event.sport_key} ${event.id}: ${messageOf(error)}`);
+      return await this.cache.getStale<OddsApiEvent>(cacheKey, 2 * 60 * 60 * 1000);
     }
   }
 
@@ -182,6 +232,7 @@ export class DataEngine {
     fixturesLoaded: number,
     pricesLoaded: number,
     sportKeysScanned: string[],
+    deepMarketEventsScanned: number,
     errors: string[]
   ): Promise<DataEngineDiagnostics> {
     return {
@@ -190,6 +241,8 @@ export class DataEngine {
       fixturesLoaded,
       pricesLoaded,
       sportKeysScanned,
+      deepMarketEventsScanned,
+      scanWindowHours: Number(process.env.PREMATCH_LOOKAHEAD_HOURS || 48),
       errors
     };
   }
@@ -339,6 +392,20 @@ function oddsTtlMs(events: OddsApiEvent[]): number {
   if (soonest <= 6 * 60 * 60 * 1000) return 30 * 60 * 1000;
   if (soonest <= 12 * 60 * 60 * 1000) return 2 * 60 * 60 * 1000;
   return 4 * 60 * 60 * 1000;
+}
+
+function scanWindow(): { from: string; to: string } {
+  const now = new Date();
+  const lookbackMinutes = Number(process.env.PREMATCH_LOOKBACK_MINUTES || 15);
+  const lookaheadHours = Number(process.env.PREMATCH_LOOKAHEAD_HOURS || 48);
+  return {
+    from: oddsApiTimestamp(new Date(now.getTime() - lookbackMinutes * 60 * 1000)),
+    to: oddsApiTimestamp(new Date(now.getTime() + lookaheadHours * 60 * 60 * 1000))
+  };
+}
+
+function oddsApiTimestamp(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 function classifyFootballCompetition(key: string, title: string): CompetitionContext {
