@@ -1,0 +1,39 @@
+CREATE TABLE IF NOT EXISTS "EngineSetting" (
+  "engineName" TEXT PRIMARY KEY,
+  "status" TEXT NOT NULL,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS "EnginePerformance" (
+  "engineName" TEXT PRIMARY KEY,
+  "totalSignals" INTEGER NOT NULL DEFAULT 0,
+  "wins" INTEGER NOT NULL DEFAULT 0,
+  "losses" INTEGER NOT NULL DEFAULT 0,
+  "winRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "averageOdds" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "roi" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "clv" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "profitLoss" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "averageEv" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "maximumLosingStreak" INTEGER NOT NULL DEFAULT 0,
+  "currentStreak" INTEGER NOT NULL DEFAULT 0,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS "ShadowPrediction" (
+  "id" TEXT PRIMARY KEY,
+  "engineName" TEXT NOT NULL,
+  "match" TEXT NOT NULL,
+  "market" TEXT NOT NULL,
+  "prediction" TEXT NOT NULL,
+  "odds" DOUBLE PRECISION,
+  "confidence" DOUBLE PRECISION,
+  "ev" DOUBLE PRECISION,
+  "result" TEXT,
+  "profitLoss" DOUBLE PRECISION,
+  "metadata" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS "ShadowPrediction_engineName_createdAt_idx"
+  ON "ShadowPrediction" ("engineName", "createdAt");

@@ -7,7 +7,7 @@ import { NbaPlayerPropsEngine } from '@nexora/nba-playerprops-engine';
 import { NbaTeamTotalsEngine } from '@nexora/nba-teamtotals-engine';
 import { PersistenceEngine } from '@nexora/persistence-engine';
 import { RiskEngine } from '@nexora/risk-engine';
-import { loadDotEnv, validateRequiredEnv } from '@nexora/shared';
+import { allEngineStatuses, engineKeyForName, engineStatusForKey, engineStatusForSignal, loadDotEnv, validateRequiredEnv } from '@nexora/shared';
 import { SignalEngine } from '@nexora/signal-engine';
 import { TelegramEngine, formatSignal } from '@nexora/telegram-engine';
 import type { EngineContext, MarketEngine, SignalCandidate } from '@nexora/types';
@@ -22,20 +22,42 @@ async function runSignalBatch(): Promise<void> {
   const context = await dataEngine.loadContext();
   const diagnostics = dataEngine.getDiagnostics();
   const engines = buildEngines();
-  const engineResults = await Promise.all(engines.map(async (engine) => ({
-    engine: engine.name,
-    candidates: await engine.generate(context)
-  })));
+  const engineResults = await Promise.all(engines.map(async (engine) => {
+    const engineKey = engineKeyForName(engine.name);
+    const engineStatus = engineStatusForKey(engineKey);
+    return {
+      engine: engine.name,
+      engineKey,
+      engineStatus,
+      candidates: engineStatus === 'DISABLED'
+        ? []
+        : (await engine.generate(context)).map((signal) => ({ ...signal, engineStatus }))
+    };
+  }));
   const candidates = engineResults.flatMap((result) => result.candidates);
   const signalAudit = new SignalEngine().audit(candidates);
-  const approved = new RiskEngine().removeCorrelatedExposure(signalAudit.approved);
+  const approved = signalAudit.approved.map((signal) => ({
+    ...signal,
+    engineStatus: signal.engineStatus || engineStatusForSignal(signal)
+  }));
+  const shadowApproved = approved.filter((signal) => signal.engineStatus === 'SHADOW');
+  const productionApproved = new RiskEngine().removeCorrelatedExposure(
+    approved.filter((signal) => signal.engineStatus === 'PRODUCTION')
+  );
 
   if (process.argv.includes('--dry-run') || process.argv.includes('--no-send')) {
-    printDiagnostics(context, diagnostics, engineResults, candidates, signalAudit.rejected, approved);
-    if (approved.length > 0) {
-      for (const signal of approved) {
+    printDiagnostics(context, diagnostics, engineResults, candidates, signalAudit.rejected, productionApproved, shadowApproved);
+    if (productionApproved.length > 0) {
+      for (const signal of productionApproved) {
         console.log('');
         console.log(formatSignal(signal));
+      }
+    }
+    if (shadowApproved.length > 0) {
+      console.log('');
+      console.log(`Shadow predictions: ${shadowApproved.length}`);
+      for (const signal of shadowApproved.slice(0, 8)) {
+        console.log(`SHADOW | ${signal.engine} | ${label(signal)} | ${signal.market} | ${signal.selection}`);
       }
     }
     return;
@@ -45,7 +67,13 @@ async function runSignalBatch(): Promise<void> {
   const persistence = new PersistenceEngine();
 
   try {
-    if (approved.length === 0) {
+    await persistence.upsertEngineSettings(allEngineStatuses());
+    for (const signal of shadowApproved) {
+      await persistence.saveShadowPrediction(signal, 'SHADOW');
+      console.log(`SHADOW_STORED ${signal.engine} | ${label(signal)} | ${signal.market}`);
+    }
+
+    if (productionApproved.length === 0) {
       await telegram.sendNoBet();
       await persistence.logTelegram({
         chatId: process.env.TELEGRAM_CHAT_ID || '',
@@ -59,7 +87,7 @@ async function runSignalBatch(): Promise<void> {
     let sentCount = 0;
     let duplicateCount = 0;
 
-    for (const signal of approved) {
+    for (const signal of productionApproved) {
       if (await persistence.hasDuplicateSignal(signal)) {
         duplicateCount += 1;
         console.log(`SKIP duplicate persisted signal | ${label(signal)}`);
@@ -112,7 +140,8 @@ function printDiagnostics(
   engineResults: Array<{ engine: string; candidates: SignalCandidate[] }>,
   candidates: SignalCandidate[],
   rejected: Array<{ signal: SignalCandidate; reasons: string[] }>,
-  approved: SignalCandidate[]
+  approved: SignalCandidate[],
+  shadowApproved: SignalCandidate[]
 ): void {
   const footballFixtures = context.fixtures.filter((fixture) => fixture.sport === 'football');
   const nbaFixtures = context.fixtures.filter((fixture) => fixture.sport === 'nba');
@@ -124,7 +153,8 @@ function printDiagnostics(
   console.log(`Prices loaded: ${context.prices.length}`);
   console.log(`Candidates: ${candidates.length}`);
   console.log(`Rejected: ${rejected.length}`);
-  console.log(`Approved: ${approved.length}`);
+  console.log(`Approved production: ${approved.length}`);
+  console.log(`Approved shadow: ${shadowApproved.length}`);
 
   if (diagnostics) {
     console.log(`Sport keys scanned: ${diagnostics.sportKeysScanned.join(', ') || 'none'}`);
@@ -138,7 +168,8 @@ function printDiagnostics(
   }
 
   for (const result of engineResults) {
-    console.log(`${result.engine}: ${result.candidates.length} candidates`);
+    const engineStatus = 'engineStatus' in result ? String(result.engineStatus) : 'UNKNOWN';
+    console.log(`${result.engine} [${engineStatus}]: ${result.candidates.length} candidates`);
   }
 
   const reasonCounts = new Map<string, number>();

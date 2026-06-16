@@ -3,6 +3,7 @@ export type Sport = 'football' | 'nba' | 'generic';
 export type SignalStatus = 'draft' | 'approved' | 'sent' | 'rejected' | 'no_op';
 export type SignalTier = 'A+' | 'A' | 'B';
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+export type EngineOperationalStatus = 'PRODUCTION' | 'SHADOW' | 'DISABLED';
 export type FootballCompetitionKind = 'club' | 'international_tournament' | 'qualification' | 'friendly' | 'unknown';
 export type FootballPriorityTier =
   | 'tier_1_club'
@@ -71,6 +72,7 @@ export interface SignalCandidate {
   qualityScore?: number;
   tier?: SignalTier;
   riskLevel?: RiskLevel;
+  engineStatus?: EngineOperationalStatus;
   status?: SignalStatus;
   reason?: string;
   metadata?: Record<string, unknown>;

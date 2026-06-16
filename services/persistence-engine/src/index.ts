@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import type { SignalCandidate } from '@nexora/types';
+import type { EngineOperationalStatus, SignalCandidate } from '@nexora/types';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -86,6 +86,96 @@ export class PersistenceEngine {
       });
     } catch (error) {
       this.warn('Telegram log', error);
+    }
+  }
+
+  async saveShadowPrediction(signal: SignalCandidate, engineStatus: EngineOperationalStatus): Promise<void> {
+    const record = {
+      id: randomUUID(),
+      engineName: signal.engine,
+      match: this.matchLabel(signal),
+      market: signal.market,
+      prediction: signal.selection,
+      odds: signal.odds,
+      confidence: signal.confidence,
+      ev: signal.ev,
+      result: null,
+      profitLoss: null,
+      metadata: {
+        sport: signal.sport,
+        engineStatus,
+        fixtureId: signal.fixture?.id,
+        league: signal.fixture?.league,
+        startsAt: signal.fixture?.startsAt?.toISOString(),
+        probability: signal.probability,
+        qualityScore: signal.qualityScore,
+        tier: signal.tier,
+        riskLevel: signal.riskLevel,
+        reason: signal.reason,
+        ...(signal.metadata || {})
+      }
+    };
+
+    if (this.canUseRest()) {
+      try {
+        await this.rest('ShadowPrediction', {
+          method: 'POST',
+          body: JSON.stringify(record)
+        });
+        return;
+      } catch (error) {
+        this.warn('REST shadow prediction', error);
+      }
+    }
+
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO "ShadowPrediction" ("id","engineName","match","market","prediction","odds","confidence","ev","result","profitLoss","metadata")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+         ON CONFLICT ("id") DO NOTHING`,
+        record.id,
+        record.engineName,
+        record.match,
+        record.market,
+        record.prediction,
+        record.odds ?? null,
+        record.confidence ?? null,
+        record.ev ?? null,
+        record.result,
+        record.profitLoss,
+        JSON.stringify(record.metadata)
+      );
+    } catch (error) {
+      this.warn('shadow prediction', error);
+    }
+  }
+
+  async upsertEngineSettings(settings: Record<string, EngineOperationalStatus>): Promise<void> {
+    for (const [engineName, status] of Object.entries(settings)) {
+      if (this.canUseRest()) {
+        try {
+          await this.rest('EngineSetting', {
+            method: 'POST',
+            headers: { Prefer: 'resolution=merge-duplicates' },
+            body: JSON.stringify({ engineName, status })
+          });
+          continue;
+        } catch (error) {
+          this.warn(`REST engine setting ${engineName}`, error);
+        }
+      }
+
+      try {
+        await this.prisma.$executeRawUnsafe(
+          `INSERT INTO "EngineSetting" ("engineName","status")
+           VALUES ($1,$2)
+           ON CONFLICT ("engineName") DO UPDATE SET "status" = EXCLUDED."status", "updatedAt" = CURRENT_TIMESTAMP`,
+          engineName,
+          status
+        );
+      } catch (error) {
+        this.warn(`engine setting ${engineName}`, error);
+      }
     }
   }
 

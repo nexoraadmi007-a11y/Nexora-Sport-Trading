@@ -159,6 +159,43 @@ model ApiLog {
   createdAt DateTime @default(now())
 }
 
+model EngineSetting {
+  engineName String   @id
+  status     String
+  updatedAt  DateTime @updatedAt
+}
+
+model EnginePerformance {
+  engineName       String   @id
+  totalSignals     Int      @default(0)
+  wins             Int      @default(0)
+  losses           Int      @default(0)
+  winRate          Float    @default(0)
+  averageOdds      Float    @default(0)
+  roi              Float    @default(0)
+  clv              Float    @default(0)
+  profitLoss       Float    @default(0)
+  averageEv        Float    @default(0)
+  maximumLosingStreak Int   @default(0)
+  currentStreak    Int      @default(0)
+  updatedAt        DateTime @updatedAt
+}
+
+model ShadowPrediction {
+  id          String   @id @default(cuid())
+  engineName  String
+  match       String
+  market      String
+  prediction  String
+  odds        Float?
+  confidence  Float?
+  ev          Float?
+  result      String?
+  profitLoss  Float?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
 model TennisHardcourtSignal {
   id          String   @id @default(cuid())
   fixtureId   String?
