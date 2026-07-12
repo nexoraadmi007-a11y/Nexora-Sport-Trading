@@ -73,7 +73,10 @@ export class DataEngine {
     for (const sportKey of keys) {
       sportKeysScanned.push(sportKey);
       const events = await this.loadOdds(key, sportKey, errors);
-      const deepMarketEvents = events.slice(0, Number(process.env.DEEP_MARKET_EVENT_LIMIT || 4));
+      const deepMarketLimit = sportKey === 'basketball_nba'
+        ? Number(process.env.DEEP_MARKET_EVENT_LIMIT || 4)
+        : Number(process.env.FOOTBALL_DEEP_MARKET_EVENT_LIMIT || process.env.DEEP_MARKET_EVENT_LIMIT || 6);
+      const deepMarketEvents = events.slice(0, deepMarketLimit);
 
       for (const event of events) {
         const fixture = toFixture(event);
@@ -132,9 +135,9 @@ export class DataEngine {
     const regions = process.env.ODDS_ADDITIONAL_MARKET_REGIONS || process.env.ODDS_API_REGIONS || 'uk';
     const markets: string = sportKey === 'basketball_nba'
       ? 'h2h,spreads,totals,player_points,player_rebounds,player_assists,player_threes,team_totals'
-      : 'h2h,totals,btts,double_chance';
+      : 'h2h,totals,alternate_totals,btts,double_chance';
     const window = scanWindow();
-    const cacheKey = `odds-api:odds:${sportKey}:${regions}:${markets}:${window.from}:${window.to}:v3`;
+    const cacheKey = `odds-api:odds:${sportKey}:${regions}:${markets}:${window.from}:${window.to}:v4`;
     const cached = await this.cache.get<OddsApiEvent[]>(cacheKey);
     if (cached) return cached;
 
@@ -176,8 +179,8 @@ export class DataEngine {
     const regions = process.env.ODDS_DEEP_MARKET_REGIONS || process.env.ODDS_ADDITIONAL_MARKET_REGIONS || process.env.ODDS_API_REGIONS || 'uk';
     const markets = event.sport_key === 'basketball_nba'
       ? 'player_points,player_rebounds,player_assists,player_threes,team_totals,team_totals_h1,totals_h1,alternate_totals_h1'
-      : 'btts,double_chance';
-    const cacheKey = `odds-api:event:${event.sport_key}:${event.id}:${regions}:${markets}:v1`;
+      : 'totals,alternate_totals,btts,double_chance';
+    const cacheKey = `odds-api:event:${event.sport_key}:${event.id}:${regions}:${markets}:v2`;
     const cached = await this.cache.get<OddsApiEvent>(cacheKey);
     if (cached) return cached;
 
@@ -196,7 +199,17 @@ export class DataEngine {
     url.searchParams.set('dateFormat', 'iso');
 
     try {
-      const response = await fetchWithTimeout(url);
+      let response = await fetchWithTimeout(url);
+      if (!response.ok && event.sport_key !== 'basketball_nba') {
+        const fallbackMarkets = ['totals,btts,double_chance', 'btts,double_chance'];
+        for (const fallback of fallbackMarkets) {
+          errors.push(`Football alternate totals unavailable for ${event.sport_key} ${event.id}; retrying ${fallback}`);
+          url.searchParams.set('markets', fallback);
+          response = await fetchWithTimeout(url);
+          if (response.ok) break;
+        }
+      }
+
       if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
       const deepEvent = await response.json() as OddsApiEvent;
       await this.cache.set(cacheKey, deepEvent, 30 * 60 * 1000);
@@ -313,7 +326,7 @@ function normalizeMarket(
   const description = outcome.description?.trim();
 
   if (sport === 'football') {
-    if (key === 'totals' && point) {
+    if ((key === 'totals' || key === 'alternate_totals') && point) {
       return {
         market: `${name} ${point} Goals`,
         selection: `${name} ${point}`

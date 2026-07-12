@@ -25,15 +25,23 @@ async function runSignalBatch(): Promise<void> {
   const engineResults = await Promise.all(engines.map(async (engine) => {
     const engineKey = engineKeyForName(engine.name);
     const engineStatus = engineStatusForKey(engineKey);
+    const generated = engineStatus === 'DISABLED'
+      ? []
+      : await engine.generate(context);
+    const diagnosticsSource = engine as unknown as { getDiagnostics?: () => unknown };
+    const engineDiagnostics = typeof diagnosticsSource.getDiagnostics === 'function'
+      ? diagnosticsSource.getDiagnostics()
+      : undefined;
+
     return {
       engine: engine.name,
       engineKey,
       engineStatus,
-      candidates: engineStatus === 'DISABLED'
-        ? []
-        : (await engine.generate(context)).map((signal) => ({ ...signal, engineStatus }))
+      engineDiagnostics,
+      candidates: generated.map((signal) => ({ ...signal, engineStatus }))
     };
   }));
+  printRuntimeEngineDiagnostics(engineResults);
   const candidates = engineResults.flatMap((result) => result.candidates);
   const signalAudit = new SignalEngine().audit(candidates);
   const approved = signalAudit.approved.map((signal) => ({
@@ -137,7 +145,7 @@ function buildEngines(): MarketEngine[] {
 function printDiagnostics(
   context: EngineContext,
   diagnostics: ReturnType<DataEngine['getDiagnostics']>,
-  engineResults: Array<{ engine: string; candidates: SignalCandidate[] }>,
+  engineResults: Array<{ engine: string; candidates: SignalCandidate[]; engineDiagnostics?: unknown }>,
   candidates: SignalCandidate[],
   rejected: Array<{ signal: SignalCandidate; reasons: string[] }>,
   approved: SignalCandidate[],
@@ -185,6 +193,77 @@ function printDiagnostics(
       console.log(`- ${reason}: ${count}`);
     }
   }
+}
+
+function printRuntimeEngineDiagnostics(
+  engineResults: Array<{ engine: string; engineDiagnostics?: unknown }>
+): void {
+  for (const result of engineResults) {
+    if (result.engine !== 'Football Over 1.5 Specialist' || !isOver15Diagnostics(result.engineDiagnostics)) continue;
+
+    const diagnostics = result.engineDiagnostics;
+    console.log('OVER15_DIAGNOSTICS');
+    console.log(`- fixtures checked: ${diagnostics.fixturesChecked}`);
+    console.log(`- Over 1.5 markets found: ${diagnostics.over15MarketsFound}`);
+    console.log(`- approved: ${diagnostics.approved}`);
+    console.log(`- rejected: ${diagnostics.rejected}`);
+
+    const reasons = Object.entries(diagnostics.rejectionReasons)
+      .sort((a, b) => b[1] - a[1]);
+    if (reasons.length > 0) {
+      console.log('- rejection reasons:');
+      for (const [reason, count] of reasons) {
+        console.log(`  ${reason}: ${count}`);
+      }
+    }
+
+    if (diagnostics.strongestNearMiss) {
+      const miss = diagnostics.strongestNearMiss;
+      console.log('- strongest near-miss:');
+      console.log(`  match: ${miss.match}`);
+      console.log(`  reason: ${miss.reason}`);
+      console.log(`  odds: ${formatMaybeNumber(miss.odds)}`);
+      console.log(`  projected xG: ${formatMaybeNumber(miss.projectedXg)}`);
+      console.log(`  EV: ${formatMaybePercent(miss.ev)}`);
+      console.log(`  confidence: ${formatMaybeNumber(miss.confidence)}/100`);
+      console.log(`  quality: ${formatMaybeNumber(miss.qualityScore)}/100`);
+      console.log(`  model agreement: ${formatMaybeNumber(miss.consensusAgreement)}/5`);
+    }
+  }
+}
+
+function isOver15Diagnostics(value: unknown): value is {
+  fixturesChecked: number;
+  over15MarketsFound: number;
+  approved: number;
+  rejected: number;
+  rejectionReasons: Record<string, number>;
+  strongestNearMiss?: {
+    match: string;
+    reason: string;
+    odds?: number;
+    projectedXg?: number;
+    ev?: number;
+    confidence?: number;
+    qualityScore?: number;
+    consensusAgreement?: number;
+  };
+} {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    typeof (value as { fixturesChecked?: unknown }).fixturesChecked === 'number' &&
+    typeof (value as { over15MarketsFound?: unknown }).over15MarketsFound === 'number' &&
+    typeof (value as { rejected?: unknown }).rejected === 'number'
+  );
+}
+
+function formatMaybeNumber(value: number | undefined): string {
+  return typeof value === 'number' ? String(value) : 'N/A';
+}
+
+function formatMaybePercent(value: number | undefined): string {
+  return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : 'N/A';
 }
 
 function startScheduler(): void {
