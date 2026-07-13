@@ -14,7 +14,7 @@ export class RiskEngine {
       const engineCount = engineCounts.get(signal.engine) || 0;
 
       if (fixtureCount >= maxPerFixture) continue;
-      if (engineCount >= Number(process.env.MAX_SIGNALS_PER_ENGINE || 2)) continue;
+      if (!isUncappedBttsSignal(signal) && engineCount >= Number(process.env.MAX_SIGNALS_PER_ENGINE || 2)) continue;
 
       fixtureCounts.set(fixtureId, fixtureCount + 1);
       engineCounts.set(signal.engine, engineCount + 1);
@@ -23,4 +23,8 @@ export class RiskEngine {
 
     return selected;
   }
+}
+
+function isUncappedBttsSignal(signal: SignalCandidate): boolean {
+  return signal.engine.toLowerCase().includes('btts') && signal.market === 'BTTS';
 }

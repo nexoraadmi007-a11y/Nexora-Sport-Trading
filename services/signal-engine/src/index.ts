@@ -54,17 +54,23 @@ function rejectionReasons(signal: SignalCandidate): string[] {
 function capDailyVolume(signals: SignalCandidate[]): SignalCandidate[] {
   const maxDaily = Number(process.env.MAX_DAILY_SIGNALS || 5);
   const maxElitePerBatch = Number(process.env.MAX_ELITE_SIGNALS_PER_BATCH || 2);
+  const uncapped = signals.filter(isUncappedBttsSignal);
+  const capped = signals.filter((signal) => !isUncappedBttsSignal(signal));
   const selected: SignalCandidate[] = [];
   let eliteCount = 0;
 
-  for (const signal of signals.sort(compareSignals)) {
+  for (const signal of capped.sort(compareSignals)) {
     if (selected.length >= maxDaily) break;
     if (signal.tier === 'A+' && eliteCount >= maxElitePerBatch) continue;
     if (signal.tier === 'A+') eliteCount += 1;
     selected.push(signal);
   }
 
-  return selected;
+  return [...uncapped.sort(compareSignals), ...selected];
+}
+
+function isUncappedBttsSignal(signal: SignalCandidate): boolean {
+  return signal.engine.toLowerCase().includes('btts') && signal.market === 'BTTS';
 }
 
 function signalKey(signal: SignalCandidate): string {
